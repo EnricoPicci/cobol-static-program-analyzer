@@ -47,38 +47,31 @@ Beyond simple `PERFORM` statements, the tool handles:
 #### Multi-Model Support
 - **Configurable LLM Providers**: Support for OpenAI, Anthropic, Google, and local models
 - **Model Selection**: Different models optimized for different analysis tasks
-- **Fallback Mechanisms**: Automatic fallback to alternative models on failure
 
 #### Cost Optimization
 - **Intelligent Caching**: Reuses existing summaries to avoid redundant LLM calls
-- **Incremental Analysis**: Only processes changed components in subsequent runs
 - **Batch Processing**: Groups similar analysis tasks for efficient API usage
 
 ### Analysis Strategies
 
-#### 1. AST-Based Parsing (Primary)
+#### 1. AST-Based Parsing
 - Generates complete Abstract Syntax Tree representation
 - Provides semantic understanding of COBOL constructs
 - Enables precise control flow and data flow analysis
-- **Graceful Degradation**: Falls back to line-by-line parsing on AST failures
 
-#### 2. Line-by-Line Parsing (Fallback)
-- Direct source code processing for non-standard or complex COBOL
-- Handles legacy code that may not conform to modern COBOL standards
-- Provides basic structure analysis when AST parsing fails
+#### 2. Line-by-Line Parsing
+- Direct source code processing that generates the sections and paragraphs tree by analyzing line-by-line the COBOL code
+- Uses the LLM to summarize each section and paragraph based on the code of the section or paragraph and the summaries of the sections and paragraphs it calls
 
 ### Error Handling and Validation
 
 #### Robust Processing
-- **Syntax Validation**: Pre-validates COBOL syntax before analysis
 - **Partial Analysis**: Continues processing even when some components fail
 - **Error Reporting**: Detailed logs of parsing issues and resolution attempts
 - **Progress Tracking**: Real-time console updates on analysis status
 
 #### Quality Assurance
 - **Cross-Validation**: Compares AST and line-by-line results for consistency
-- **Business Logic Validation**: Identifies potential business rule conflicts
-- **Comment Validation**: Ensures business context preservation
 
 ## Business Context Enhancement
 
@@ -168,6 +161,4 @@ cobol-analyzer analyze \
 The tool supports extensive configuration through:
 - **Command-line arguments**: For immediate usage
 - **Configuration files**: For project-specific settings
-- **Environment variables**: For sensitive information like API keys
-- **Interactive setup**: Guided configuration for first-time users
 
