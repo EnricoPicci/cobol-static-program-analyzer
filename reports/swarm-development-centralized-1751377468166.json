@@ -1,0 +1,13 @@
+{
+  "objective": "are you there?",
+  "strategy": "development",
+  "mode": "centralized",
+  "maxAgents": 5,
+  "timeout": 60,
+  "parallel": false,
+  "monitor": false,
+  "output": "json",
+  "outputDir": "./reports",
+  "timestamp": "2025-07-01T13:44:28.165Z",
+  "id": "swarm-development-centralized-1751377468166"
+}

@@ -3,7 +3,7 @@
   "project": {
     "name": "cobol-static-program-analyzer",
     "type": "claude-flow",
-    "created": "2025-07-01T12:37:55.747Z"
+    "created": "2025-07-01T12:41:34.229Z"
   },
   "features": {
     "swarm": true,
