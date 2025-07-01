@@ -1,5 +1,24 @@
 {
-  "dependencies": {
+  "dev-dependencies": {
     "@google/gemini-cli": "^0.1.7"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.8",
+    "antlr4ts-cli": "^0.5.0-alpha.4",
+    "jest": "^30.0.3",
+    "ts-jest": "^29.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "antlr4ts": "^0.5.0-alpha.4"
+  },
+  "scripts": {
+    "generate-parser": "antlr4ts -visitor -o src/generated/preprocessor grammars/Cobol85Preprocessor.g4 && antlr4ts -visitor -o src/generated/parser grammars/Cobol85.g4",
+    "test": "jest",
+    "test:parser": "ts-node tests/parser.test.ts",
+    "build": "tsc",
+    "start": "ts-node src/index.ts"
   }
 }
