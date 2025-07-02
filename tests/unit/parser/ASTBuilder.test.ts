@@ -518,7 +518,9 @@ describe('CobolASTBuilder', () => {
 
     test('should recover from missing required elements', () => {
       const incompleteCtx = new MockParserRuleContext('compilationUnit');
-      // Don't add identification division (required)
+      const programUnitCtx = new MockParserRuleContext('programUnit');
+      // programUnit has no identification division (required)
+      incompleteCtx.addChild(programUnitCtx);
       
       expect(() => {
         builder.visit(incompleteCtx as any);

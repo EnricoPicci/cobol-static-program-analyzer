@@ -210,15 +210,16 @@ export class CobolErrorHandler {
    */
   addError(error: CobolParsingError): void {
     if (error.severity === 'error') {
-      this.errors.push(error);
-      
       if (this.strategy === ErrorRecoveryStrategy.FAIL_FAST) {
         throw error;
       }
       
+      // Check if adding this error would exceed the limit
       if (this.errors.length >= this.maxErrors) {
         throw new ParsingError(`Too many errors (${this.maxErrors}), stopping parsing`);
       }
+      
+      this.errors.push(error);
     } else {
       this.warnings.push(error);
     }

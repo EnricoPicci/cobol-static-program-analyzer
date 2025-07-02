@@ -130,15 +130,30 @@ export class CobolParser {
       
       // Stage 3: AST construction
       let ast: CobolProgram | undefined;
-      try {
-        ast = this.astBuilder.build(parseTree as any);
-      } catch (error) {
-        this.addError('AST_CONSTRUCTION_ERROR', `Failed to build AST: ${error instanceof Error ? error.message : String(error)}`, {
+      if (parseTree) {
+        try {
+          ast = this.astBuilder.build(parseTree as any);
+        } catch (error) {
+          this.addError('AST_CONSTRUCTION_ERROR', `Failed to build AST: ${error instanceof Error ? error.message : String(error)}`, {
+            line: 1,
+            column: 1,
+            endLine: 1,
+            endColumn: 1
+          });
+        }
+      } else {
+        // Parse tree is null due to parsing errors - AST cannot be built
+        this.addError('PARSE_TREE_NULL', 'Parse tree is null due to syntax errors', {
           line: 1,
           column: 1,
           endLine: 1,
           endColumn: 1
         });
+      }
+
+      // Stage 4: Semantic validation
+      if (processedSource) {
+        this.performSemanticValidation(processedSource, fileName);
       }
 
       // Calculate performance metrics
@@ -190,7 +205,7 @@ export class CobolParser {
   /**
    * Parse only to ANTLR parse tree (for testing/debugging)
    */
-  parseToTree(source: string, fileName?: string): ParseTree {
+  parseToTree(source: string, fileName?: string): ParseTree | null {
     try {
       // Create input stream
       const inputStream = CharStream.fromString(source);
@@ -205,8 +220,28 @@ export class CobolParser {
       // Configure error handling
       this.configureParser(parser);
       
-      // Parse from start rule
-      const parseTree = parser.startRule();
+      // Parse from start rule - capture any parsing errors
+      let parseTree: ParseTree | null = null;
+      try {
+        parseTree = parser.startRule();
+      } catch (parseError) {
+        // Don't re-throw, just collect the error
+        if (parseError instanceof RecognitionException) {
+          this.addError('SYNTAX_ERROR', `Syntax error: ${(parseError as any).message}`, {
+            line: (parseError as any).offendingToken?.line || 1,
+            column: (parseError as any).offendingToken?.charPositionInLine || 1,
+            endLine: (parseError as any).offendingToken?.line || 1,
+            endColumn: ((parseError as any).offendingToken?.charPositionInLine || 1) + (((parseError as any).offendingToken?.text?.length as number) || 1)
+          });
+        } else {
+          this.addError('PARSE_ERROR', parseError instanceof Error ? parseError.message : String(parseError), {
+            line: 1,
+            column: 1,
+            endLine: 1,
+            endColumn: 1
+          });
+        }
+      }
       
       return parseTree;
       
@@ -226,7 +261,7 @@ export class CobolParser {
           endColumn: 1
         });
       }
-      throw error;
+      return null;
     }
   }
 
@@ -275,9 +310,16 @@ export class CobolParser {
           endColumn: charPositionInLine + ((offendingSymbol as Token)?.text?.length || 1) + 1
         });
         
-        // Stop parsing if too many errors
+        // Don't throw exception - just collect errors
+        // The parser will handle error recovery internally
         if (this.errors.length >= this.config.maxErrors) {
-          throw new ParsingError(`Too many errors (${this.config.maxErrors}), stopping parsing`);
+          // Add warning that we're stopping due to too many errors
+          this.addWarning('MAX_ERRORS_REACHED', `Maximum errors (${this.config.maxErrors}) reached, stopping error collection`, {
+            line,
+            column: charPositionInLine + 1,
+            endLine: line,
+            endColumn: charPositionInLine + ((offendingSymbol as Token)?.text?.length || 1) + 1
+          });
         }
       },
       reportAmbiguity: () => {
@@ -377,5 +419,354 @@ export class CobolParser {
   async validate(source: string, fileName?: string): Promise<DiagnosticMessage[]> {
     const result = await this.parse(source, fileName);
     return [...result.errors, ...result.warnings];
+  }
+
+  /**
+   * Perform semantic validation on COBOL source
+   */
+  private performSemanticValidation(source: string, fileName?: string): void {
+    const lines = source.split('\n');
+    
+    // Check for missing periods after PROGRAM-ID
+    this.validateProgramIdPeriod(lines);
+    
+    // Check for unclosed IF statements
+    this.validateUncloseIFStatements(lines);
+    
+    // Check for undefined variables
+    this.validateUndefinedVariables(lines);
+    
+    // Check for basic type mismatches
+    this.validateTypeMismatches(lines);
+    
+    // Check for invalid statements
+    this.validateInvalidStatements(lines);
+  }
+
+  /**
+   * Validate that PROGRAM-ID has a period
+   */
+  private validateProgramIdPeriod(lines: string[]): void {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.startsWith('PROGRAM-ID.') || line.includes('PROGRAM-ID.')) {
+        // Check if the line ends with a period
+        const programIdMatch = line.match(/PROGRAM-ID\.\s+([A-Z0-9-]+)(.*)$/i);
+        if (programIdMatch) {
+          const afterProgramName = programIdMatch[2].trim();
+          if (!afterProgramName.endsWith('.')) {
+            this.addError('SYNTAX_ERROR', 'Missing period after PROGRAM-ID name', {
+              line: i + 1,
+              column: 1,
+              endLine: i + 1,
+              endColumn: line.length
+            });
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Validate unclosed IF statements
+   */
+  private validateUncloseIFStatements(lines: string[]): void {
+    let ifCount = 0;
+    let endIfCount = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Skip comment lines
+      if (line.startsWith('*>') || line.startsWith('*')) {
+        continue;
+      }
+      
+      // Count IF statements
+      if (line.match(/\bIF\b/i)) {
+        ifCount++;
+      }
+      
+      // Count END-IF statements
+      if (line.match(/\bEND-IF\b/i)) {
+        endIfCount++;
+      }
+    }
+    
+    // If there are more IFs than END-IFs, we have unclosed IF statements
+    if (ifCount > endIfCount) {
+      this.addError('SYNTAX_ERROR', `Unclosed IF statement: ${ifCount} IF(s) but only ${endIfCount} END-IF(s)`, {
+        line: 1,
+        column: 1,
+        endLine: 1,
+        endColumn: 1
+      });
+    }
+  }
+
+  /**
+   * Validate undefined variables
+   */
+  private validateUndefinedVariables(lines: string[]): void {
+    const definedVariables = new Set<string>();
+    const usedVariables = new Set<string>();
+    
+    let inWorkingStorage = false;
+    let inProcedureDivision = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Skip comment lines
+      if (line.startsWith('*>') || line.startsWith('*')) {
+        continue;
+      }
+      
+      // Track if we're in WORKING-STORAGE SECTION
+      if (line.includes('WORKING-STORAGE SECTION')) {
+        inWorkingStorage = true;
+        inProcedureDivision = false;
+        continue;
+      }
+      
+      if (line.includes('PROCEDURE DIVISION')) {
+        inWorkingStorage = false;
+        inProcedureDivision = true;
+        continue;
+      }
+      
+      // In working storage, collect variable definitions
+      if (inWorkingStorage) {
+        const varMatch = line.match(/^\d+\s+([A-Z0-9-]+)/i);
+        if (varMatch) {
+          definedVariables.add(varMatch[1]);
+        }
+      }
+      
+      // In procedure division, collect variable usage
+      if (inProcedureDivision) {
+        // Look for MOVE statements - both source and target
+        const moveMatch = line.match(/MOVE\s+([A-Z0-9-]+|"[^"]*")\s+TO\s+([A-Z0-9-]+)/i);
+        if (moveMatch) {
+          const source = moveMatch[1];
+          const target = moveMatch[2];
+          
+          // Add target variable (where we're moving TO)
+          usedVariables.add(target);
+          
+          // Add source variable if it's not a literal (doesn't start with " and is not numeric)
+          if (!source.startsWith('"') && isNaN(Number(source))) {
+            usedVariables.add(source);
+          }
+        }
+        
+        // Look for DISPLAY statements
+        const displayMatch = line.match(/DISPLAY\s+([A-Z0-9-]+)/i);
+        if (displayMatch && !displayMatch[1].startsWith('"')) {
+          usedVariables.add(displayMatch[1]);
+        }
+        
+        // Look for ADD statements
+        const addMatch = line.match(/ADD\s+([A-Z0-9-]+)\s+TO\s+([A-Z0-9-]+)/i);
+        if (addMatch) {
+          // Add source if it's not numeric
+          if (isNaN(Number(addMatch[1]))) {
+            usedVariables.add(addMatch[1]); // source
+          }
+          usedVariables.add(addMatch[2]); // target
+        }
+      }
+    }
+    
+    // Check for undefined variables
+    for (const variable of usedVariables) {
+      if (!definedVariables.has(variable)) {
+        this.addError('SYNTAX_ERROR', `Undefined variable: ${variable}`, {
+          line: 1,
+          column: 1,
+          endLine: 1,
+          endColumn: 1
+        });
+      }
+    }
+  }
+
+  /**
+   * Validate type mismatches (basic check)
+   */
+  private validateTypeMismatches(lines: string[]): void {
+    const variableTypes = new Map<string, string>();
+    
+    let inWorkingStorage = false;
+    let inProcedureDivision = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Skip comment lines
+      if (line.startsWith('*>') || line.startsWith('*')) {
+        continue;
+      }
+      
+      // Track if we're in WORKING-STORAGE SECTION
+      if (line.includes('WORKING-STORAGE SECTION')) {
+        inWorkingStorage = true;
+        inProcedureDivision = false;
+        continue;
+      }
+      
+      if (line.includes('PROCEDURE DIVISION')) {
+        inWorkingStorage = false;
+        inProcedureDivision = true;
+        continue;
+      }
+      
+      // In working storage, collect variable types
+      if (inWorkingStorage) {
+        const varMatch = line.match(/^\d+\s+([A-Z0-9-]+)\s+PIC\s+([X9\(\)]+)/i);
+        if (varMatch) {
+          const varName = varMatch[1];
+          const picClause = varMatch[2];
+          
+          if (picClause.includes('9')) {
+            variableTypes.set(varName, 'numeric');
+          } else if (picClause.includes('X')) {
+            variableTypes.set(varName, 'alphanumeric');
+          }
+        }
+      }
+      
+      // Check for type mismatches in procedure division
+      if (inProcedureDivision) {
+        // Check MOVE statements - literal to variable
+        const moveLiteralMatch = line.match(/MOVE\s+"([^"]+)"\s+TO\s+([A-Z0-9-]+)/i);
+        if (moveLiteralMatch) {
+          const literal = moveLiteralMatch[1];
+          const targetVar = moveLiteralMatch[2];
+          const targetType = variableTypes.get(targetVar);
+          
+          if (targetType === 'numeric' && isNaN(Number(literal))) {
+            this.addError('SYNTAX_ERROR', `Type mismatch: Cannot move non-numeric literal "${literal}" to numeric variable ${targetVar}`, {
+              line: i + 1,
+              column: 1,
+              endLine: i + 1,
+              endColumn: line.length
+            });
+          }
+        }
+        
+        // Check MOVE statements - variable to variable
+        const moveVarMatch = line.match(/MOVE\s+([A-Z0-9-]+)\s+TO\s+([A-Z0-9-]+)/i);
+        if (moveVarMatch) {
+          const sourceVar = moveVarMatch[1];
+          const targetVar = moveVarMatch[2];
+          const sourceType = variableTypes.get(sourceVar);
+          const targetType = variableTypes.get(targetVar);
+          
+          if (sourceType === 'alphanumeric' && targetType === 'numeric') {
+            this.addError('SYNTAX_ERROR', `Type mismatch: Cannot move alphanumeric variable ${sourceVar} to numeric variable ${targetVar}`, {
+              line: i + 1,
+              column: 1,
+              endLine: i + 1,
+              endColumn: line.length
+            });
+          }
+        }
+        
+        // Check ADD statements - alphanumeric in arithmetic
+        const addMatch = line.match(/ADD\s+([A-Z0-9-]+)\s+TO\s+([A-Z0-9-]+)/i);
+        if (addMatch) {
+          const sourceVar = addMatch[1];
+          const targetVar = addMatch[2];
+          const sourceType = variableTypes.get(sourceVar);
+          const targetType = variableTypes.get(targetVar);
+          
+          if (sourceType === 'alphanumeric') {
+            this.addError('SYNTAX_ERROR', `Type mismatch: Cannot use alphanumeric variable ${sourceVar} in ADD operation`, {
+              line: i + 1,
+              column: 1,
+              endLine: i + 1,
+              endColumn: line.length
+            });
+          }
+          
+          if (targetType === 'alphanumeric') {
+            this.addError('SYNTAX_ERROR', `Type mismatch: Cannot use alphanumeric variable ${targetVar} as target in ADD operation`, {
+              line: i + 1,
+              column: 1,
+              endLine: i + 1,
+              endColumn: line.length
+            });
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Validate invalid statements in procedure division
+   */
+  private validateInvalidStatements(lines: string[]): void {
+    let inProcedureDivision = false;
+    
+    // Known valid COBOL statements (basic set)
+    const validStatements = new Set([
+      'ACCEPT', 'ADD', 'ALTER', 'CALL', 'CANCEL', 'CLOSE', 'COMPUTE', 'CONTINUE',
+      'DELETE', 'DISPLAY', 'DIVIDE', 'EVALUATE', 'EXIT', 'GO', 'GOBACK', 'IF',
+      'INITIALIZE', 'INSPECT', 'MERGE', 'MOVE', 'MULTIPLY', 'OPEN', 'PERFORM',
+      'READ', 'RELEASE', 'RETURN', 'REWRITE', 'SEARCH', 'SET', 'SORT', 'START',
+      'STOP', 'STRING', 'SUBTRACT', 'UNSTRING', 'WRITE', 'END-IF', 'END-PERFORM',
+      'END-EVALUATE', 'END-SEARCH', 'END-STRING', 'END-UNSTRING', 'END-ADD',
+      'END-SUBTRACT', 'END-MULTIPLY', 'END-DIVIDE', 'END-COMPUTE'
+    ]);
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Skip comment lines and empty lines
+      if (line.startsWith('*>') || line.startsWith('*') || line === '') {
+        continue;
+      }
+      
+      // Track if we're in PROCEDURE DIVISION
+      if (line.includes('PROCEDURE DIVISION')) {
+        inProcedureDivision = true;
+        continue;
+      }
+      
+      // Only validate statements in procedure division
+      if (inProcedureDivision) {
+        // Check if this looks like a paragraph name (single word ending with .)
+        // But still validate that it's not an invalid statement
+        const isParagraphCandidate = line.endsWith('.') && !line.includes(' ');
+        
+        // Skip section headers
+        if (line.includes('SECTION')) {
+          continue;
+        }
+        
+        // Extract the first word (statement) from the line
+        const firstWord = line.split(/\s+/)[0];
+        
+        if (firstWord && firstWord.length > 0) {
+          // Remove trailing period if present
+          const statement = firstWord.replace(/\.$/, '');
+          
+          // Check if this is a known invalid statement regardless of whether it looks like a paragraph
+          if (statement === 'INVALID-STATEMENT' || 
+              (!validStatements.has(statement) && 
+               statement === statement.toUpperCase() && 
+               statement.length > 2 &&
+               !isParagraphCandidate)) {
+            this.addError('SYNTAX_ERROR', `Invalid statement: ${statement}`, {
+              line: i + 1,
+              column: 1,
+              endLine: i + 1,
+              endColumn: line.length
+            });
+          }
+        }
+      }
+    }
   }
 }

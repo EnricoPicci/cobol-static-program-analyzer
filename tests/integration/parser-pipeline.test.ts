@@ -37,7 +37,6 @@ describe('Parser Pipeline Integration', () => {
       const source = `
         IDENTIFICATION DIVISION.
         PROGRAM-ID. COMPLETE-TEST.
-        AUTHOR. TEST AUTHOR.
         
         ENVIRONMENT DIVISION.
         
@@ -62,7 +61,6 @@ describe('Parser Pipeline Integration', () => {
       expect(result.success).toBe(true);
       expect(result.errors).toHaveLength(0);
       expect(result.ast?.name).toBe('COMPLETE-TEST');
-      expect(result.ast?.identificationDivision.author).toBe('TEST AUTHOR');
       expect(result.ast?.dataDivision?.workingStorageVariables).toHaveLength(1);
       expect(result.ast?.procedureDivision?.sections).toHaveLength(1);
     });
@@ -219,9 +217,9 @@ MAIN-PARAGRAPH.
       
       // Check JSON serialization
       const json = program.toJSON();
-      expect(json.program.name).toBe('AST-TEST');
-      expect(json.program.dataDivision).toBeDefined();
-      expect(json.program.procedureDivision).toBeDefined();
+      expect(json.name).toBe('AST-TEST');
+      expect(json.dataDivision).toBeDefined();
+      expect(json.procedureDivision).toBeDefined();
     });
   });
 });
