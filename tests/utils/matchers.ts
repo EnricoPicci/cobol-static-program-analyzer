@@ -282,5 +282,279 @@ export const customMatchers = {
         pass: hasAnyNodes
       };
     }
+  },
+
+  toHavePerformStatement(received: CobolProgram, paragraphName: string, targetName: string) {
+    const procedureDiv = received.procedureDivision;
+    if (!procedureDiv) {
+      return {
+        message: () => `Expected program to have PROCEDURE DIVISION`,
+        pass: false
+      };
+    }
+
+    const findParagraph = (name: string) => {
+      // Check standalone paragraphs
+      let found = procedureDiv.paragraphs?.find(para => para.name === name);
+      if (found) return found;
+      
+      // Check paragraphs within sections
+      for (const section of procedureDiv.sections || []) {
+        found = section.paragraphs?.find(para => para.name === name);
+        if (found) return found;
+      }
+      
+      return null;
+    };
+
+    const paragraph = findParagraph(paragraphName);
+    if (!paragraph) {
+      return {
+        message: () => `Paragraph '${paragraphName}' not found`,
+        pass: false
+      };
+    }
+
+    const hasPerform = paragraph.statements?.some(stmt => 
+      stmt.statementType === 'PERFORM' && 
+      stmt.sourceText?.includes(targetName)
+    );
+
+    return {
+      message: () => hasPerform
+        ? `Expected '${paragraphName}' not to perform '${targetName}'`
+        : `Expected '${paragraphName}' to perform '${targetName}'`,
+      pass: !!hasPerform
+    };
+  },
+
+  toHaveDataItem(received: CobolProgram, itemName: string, level?: string) {
+    const dataDiv = received.dataDivision;
+    if (!dataDiv) {
+      return {
+        message: () => `Expected program to have DATA DIVISION`,
+        pass: false
+      };
+    }
+
+    const allVariables = [
+      ...(dataDiv.workingStorage || []),
+      ...(dataDiv.fileSection || []),
+      ...(dataDiv.linkageSection || [])
+    ];
+
+    const matchingItems = allVariables.filter(variable => {
+      const nameMatch = variable.name === itemName;
+      const levelMatch = level ? String(variable.level) === String(level) : true;
+      return nameMatch && levelMatch;
+    });
+
+    const hasItem = matchingItems.length > 0;
+
+    return {
+      message: () => {
+        const levelDesc = level ? ` at level ${level}` : '';
+        return hasItem
+          ? `Expected not to find data item '${itemName}'${levelDesc}`
+          : `Expected to find data item '${itemName}'${levelDesc}`;
+      },
+      pass: hasItem
+    };
+  },
+
+  toHaveValidPictureClause(received: any, expectedPattern: string) {
+    const pictureClause = received.picture || received.pic;
+    if (!pictureClause) {
+      return {
+        message: () => `Expected data item to have PICTURE clause`,
+        pass: false
+      };
+    }
+
+    const matches = pictureClause === expectedPattern;
+
+    return {
+      message: () => matches
+        ? `Expected PICTURE clause not to be '${expectedPattern}'`
+        : `Expected PICTURE clause to be '${expectedPattern}' but was '${pictureClause}'`,
+      pass: matches
+    };
+  },
+
+  toBeValidCobolIdentifier(received: string) {
+    // COBOL identifier rules: 1-30 chars, start with letter, contain letters/digits/hyphens
+    const cobolIdPattern = /^[A-Z][A-Z0-9-]{0,29}$/;
+    const isValid = cobolIdPattern.test(received);
+
+    return {
+      message: () => isValid
+        ? `Expected '${received}' not to be a valid COBOL identifier`
+        : `Expected '${received}' to be a valid COBOL identifier`,
+      pass: isValid
+    };
+  },
+
+  toHaveCorrectDivisionOrder(received: CobolProgram) {
+    const divisions = [];
+    
+    if (received.identificationDivision) divisions.push('IDENTIFICATION');
+    if (received.environmentDivision) divisions.push('ENVIRONMENT');
+    if (received.dataDivision) divisions.push('DATA');
+    if (received.procedureDivision) divisions.push('PROCEDURE');
+
+    const expectedOrder = ['IDENTIFICATION', 'ENVIRONMENT', 'DATA', 'PROCEDURE'];
+    const actualOrder = divisions.filter(div => expectedOrder.includes(div));
+    
+    // Check if the order matches the expected sequence
+    let isValidOrder = true;
+    let lastIndex = -1;
+    
+    for (const division of actualOrder) {
+      const currentIndex = expectedOrder.indexOf(division);
+      if (currentIndex <= lastIndex) {
+        isValidOrder = false;
+        break;
+      }
+      lastIndex = currentIndex;
+    }
+
+    return {
+      message: () => isValidOrder
+        ? `Expected division order to be incorrect`
+        : `Expected divisions in order [${expectedOrder.join(', ')}] but found [${actualOrder.join(', ')}]`,
+      pass: isValidOrder
+    };
+  },
+
+  toHaveFileOperation(received: CobolProgram, operation: string, fileName?: string) {
+    const procedureDiv = received.procedureDivision;
+    if (!procedureDiv) {
+      return {
+        message: () => `Expected program to have PROCEDURE DIVISION`,
+        pass: false
+      };
+    }
+
+    const getAllStatements = (division: any): any[] => {
+      const statements = [];
+      
+      // Get statements from paragraphs
+      for (const paragraph of division.paragraphs || []) {
+        statements.push(...(paragraph.statements || []));
+      }
+      
+      // Get statements from sections
+      for (const section of division.sections || []) {
+        for (const paragraph of section.paragraphs || []) {
+          statements.push(...(paragraph.statements || []));
+        }
+      }
+      
+      return statements;
+    };
+
+    const allStatements = getAllStatements(procedureDiv);
+    const hasOperation = allStatements.some(stmt => {
+      const operationMatch = stmt.sourceText?.toUpperCase().includes(operation.toUpperCase());
+      const fileMatch = fileName ? stmt.sourceText?.includes(fileName) : true;
+      return operationMatch && fileMatch;
+    });
+
+    return {
+      message: () => {
+        const fileDesc = fileName ? ` on file '${fileName}'` : '';
+        return hasOperation
+          ? `Expected not to find ${operation} operation${fileDesc}`
+          : `Expected to find ${operation} operation${fileDesc}`;
+      },
+      pass: hasOperation
+    };
+  },
+
+  toHaveConditionalStatement(received: CobolProgram, conditionType: string) {
+    const procedureDiv = received.procedureDivision;
+    if (!procedureDiv) {
+      return {
+        message: () => `Expected program to have PROCEDURE DIVISION`,
+        pass: false
+      };
+    }
+
+    const getAllStatements = (division: any): any[] => {
+      const statements = [];
+      
+      for (const paragraph of division.paragraphs || []) {
+        statements.push(...(paragraph.statements || []));
+      }
+      
+      for (const section of division.sections || []) {
+        for (const paragraph of section.paragraphs || []) {
+          statements.push(...(paragraph.statements || []));
+        }
+      }
+      
+      return statements;
+    };
+
+    const allStatements = getAllStatements(procedureDiv);
+    const hasCondition = allStatements.some(stmt => 
+      stmt.statementType?.toUpperCase() === conditionType.toUpperCase() ||
+      stmt.sourceText?.toUpperCase().includes(conditionType.toUpperCase())
+    );
+
+    return {
+      message: () => hasCondition
+        ? `Expected not to find ${conditionType} statement`
+        : `Expected to find ${conditionType} statement`,
+      pass: hasCondition
+    };
+  },
+
+  toMatchExpectedAST(received: any, expectedFile: string) {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const expectedPath = path.join(__dirname, '../data/expected-asts', expectedFile);
+      const expectedAST = JSON.parse(fs.readFileSync(expectedPath, 'utf8'));
+      
+      // Deep comparison of AST structures
+      const compareAST = (actual: any, expected: any, path = ''): string[] => {
+        const errors: string[] = [];
+        
+        if (typeof expected === 'object' && expected !== null) {
+          for (const [key, expectedValue] of Object.entries(expected)) {
+            const currentPath = path ? `${path}.${key}` : key;
+            
+            if (!(key in actual)) {
+              errors.push(`Missing property at ${currentPath}`);
+            } else {
+              errors.push(...compareAST(actual[key], expectedValue, currentPath));
+            }
+          }
+        } else {
+          if (actual !== expected) {
+            errors.push(`Expected ${expected} at ${path || 'root'} but got ${actual}`);
+          }
+        }
+        
+        return errors;
+      };
+      
+      const errors = compareAST(received, expectedAST);
+      const matches = errors.length === 0;
+      
+      return {
+        message: () => matches
+          ? `Expected AST not to match ${expectedFile}`
+          : `AST does not match ${expectedFile}: ${errors.join(', ')}`,
+        pass: matches
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        message: () => `Failed to load expected AST file ${expectedFile}: ${errorMessage}`,
+        pass: false
+      };
+    }
   }
 };

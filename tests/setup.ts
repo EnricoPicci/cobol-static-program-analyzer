@@ -27,6 +27,14 @@ declare global {
       toHaveWorkingStorageVariable(varName: string): R;
       toHaveProcedureParagraph(paragraphName: string): R;
       toCallParagraph(callerName: string, targetName: string): R;
+      toHaveDataItem(itemName: string, level?: string): R;
+      toHavePerformStatement(paragraphName: string, targetName: string): R;
+      toHaveConditionalStatement(conditionType: string): R;
+      toHaveFileOperation(operation: string, fileName?: string): R;
+      toHaveCorrectDivisionOrder(): R;
+      toHaveValidPictureClause(expectedPattern: string): R;
+      toBeValidCobolIdentifier(): R;
+      toMatchExpectedAST(expectedFile: string): R;
       
       // COPY statement matchers
       toResolveCopyStatements(): R;

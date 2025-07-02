@@ -1,0 +1,131 @@
+{
+  "type": "CobolProgram",
+  "name": "ARITHMETIC-TEST",
+  "location": {
+    "line": 2,
+    "column": 7,
+    "endLine": 25,
+    "endColumn": 19
+  },
+  "identificationDivision": {
+    "type": "IdentificationDivision",
+    "programId": "ARITHMETIC-TEST",
+    "location": {
+      "line": 2,
+      "column": 7,
+      "endLine": 3,
+      "endColumn": 38
+    }
+  },
+  "dataDivision": {
+    "type": "DataDivision",
+    "location": {
+      "line": 5,
+      "column": 7,
+      "endLine": 10,
+      "endColumn": 44
+    },
+    "workingStorage": [
+      {
+        "name": "NUM1",
+        "level": "01",
+        "picture": "9(3)",
+        "value": "100",
+        "location": {
+          "line": 7,
+          "column": 7,
+          "endLine": 7,
+          "endColumn": 35
+        }
+      },
+      {
+        "name": "NUM2",
+        "level": "01",
+        "picture": "9(3)",
+        "value": "50",
+        "location": {
+          "line": 8,
+          "column": 7,
+          "endLine": 8,
+          "endColumn": 34
+        }
+      },
+      {
+        "name": "RESULT",
+        "level": "01",
+        "picture": "9(4)",
+        "location": {
+          "line": 9,
+          "column": 7,
+          "endLine": 9,
+          "endColumn": 27
+        }
+      },
+      {
+        "name": "RESULT-DISPLAY",
+        "level": "01",
+        "picture": "Z(4)",
+        "location": {
+          "line": 10,
+          "column": 7,
+          "endLine": 10,
+          "endColumn": 35
+        }
+      }
+    ]
+  },
+  "procedureDivision": {
+    "type": "ProcedureDivision",
+    "location": {
+      "line": 12,
+      "column": 7,
+      "endLine": 25,
+      "endColumn": 19
+    },
+    "paragraphs": [
+      {
+        "type": "ParagraphNode",
+        "name": "MAIN-PARA",
+        "location": {
+          "line": 13,
+          "column": 7,
+          "endLine": 13,
+          "endColumn": 16
+        },
+        "statements": [
+          {
+            "type": "StatementNode",
+            "statementType": "ADD",
+            "sourceText": "ADD NUM1 TO NUM2 GIVING RESULT",
+            "location": {
+              "line": 14,
+              "column": 11,
+              "endLine": 14,
+              "endColumn": 42
+            }
+          },
+          {
+            "type": "StatementNode",
+            "statementType": "MOVE",
+            "sourceText": "MOVE RESULT TO RESULT-DISPLAY",
+            "location": {
+              "line": 15,
+              "column": 11,
+              "endLine": 15,
+              "endColumn": 41
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "summary": {
+    "name": "ARITHMETIC-TEST",
+    "hasProcedureDivision": true,
+    "hasDataDivision": true,
+    "hasEnvironmentDivision": false,
+    "sectionCount": 0,
+    "paragraphCount": 1,
+    "variableCount": 4
+  }
+}

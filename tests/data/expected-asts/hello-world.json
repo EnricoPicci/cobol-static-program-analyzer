@@ -1,0 +1,76 @@
+{
+  "type": "CobolProgram",
+  "name": "HELLO-WORLD",
+  "location": {
+    "line": 2,
+    "column": 7,
+    "endLine": 8,
+    "endColumn": 19
+  },
+  "identificationDivision": {
+    "type": "IdentificationDivision",
+    "programId": "HELLO-WORLD",
+    "author": "Test Suite",
+    "dateWritten": "2025-07-01",
+    "location": {
+      "line": 2,
+      "column": 7,
+      "endLine": 5,
+      "endColumn": 29
+    }
+  },
+  "procedureDivision": {
+    "type": "ProcedureDivision",
+    "location": {
+      "line": 7,
+      "column": 7,
+      "endLine": 8,
+      "endColumn": 19
+    },
+    "paragraphs": [
+      {
+        "type": "ParagraphNode",
+        "name": "MAIN-PARAGRAPH",
+        "location": {
+          "line": 8,
+          "column": 7,
+          "endLine": 8,
+          "endColumn": 22
+        },
+        "statements": [
+          {
+            "type": "StatementNode",
+            "statementType": "DISPLAY",
+            "sourceText": "DISPLAY \"Hello, World!\"",
+            "location": {
+              "line": 8,
+              "column": 11,
+              "endLine": 8,
+              "endColumn": 34
+            }
+          },
+          {
+            "type": "StatementNode",
+            "statementType": "STOP",
+            "sourceText": "STOP RUN",
+            "location": {
+              "line": 9,
+              "column": 11,
+              "endLine": 9,
+              "endColumn": 19
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "summary": {
+    "name": "HELLO-WORLD",
+    "hasProcedureDivision": true,
+    "hasDataDivision": false,
+    "hasEnvironmentDivision": false,
+    "sectionCount": 0,
+    "paragraphCount": 1,
+    "variableCount": 0
+  }
+}

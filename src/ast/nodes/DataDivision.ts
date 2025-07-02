@@ -87,6 +87,21 @@ export class DataDivision extends BaseASTNode {
   }
 
   /**
+   * Backward compatibility getters
+   */
+  get workingStorageVariables(): VariableDefinition[] {
+    return this.workingStorage || [];
+  }
+
+  get fileVariables(): VariableDefinition[] {
+    return this.fileSection || [];
+  }
+
+  get linkageVariables(): VariableDefinition[] {
+    return this.linkageSection || [];
+  }
+
+  /**
    * Accept visitor pattern
    */
   accept<T>(visitor: ASTVisitor<T>): T {
