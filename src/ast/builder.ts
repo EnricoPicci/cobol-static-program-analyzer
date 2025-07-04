@@ -184,7 +184,7 @@ export class CobolASTBuilder {
    * Visit parser rule context (non-terminal nodes)
    */
   private visitParserRuleContext(ctx: ParserRuleContext): ASTNode {
-    const ruleName = this.getRuleName(ctx);
+    const ruleName = this.getCachedRuleName(ctx);
     
     switch (ruleName) {
       case 'startRule':
@@ -248,7 +248,7 @@ export class CobolASTBuilder {
     const firstChild = ctx.getChild(0);
     let actualCompilationUnit = ctx;
     
-    if (firstChild && firstChild instanceof ParserRuleContext && this.getRuleName(firstChild) === 'compilationUnit') {
+    if (firstChild && firstChild instanceof ParserRuleContext && this.getCachedRuleName(firstChild) === 'compilationUnit') {
       actualCompilationUnit = firstChild;
     }
     
@@ -757,7 +757,7 @@ export class CobolASTBuilder {
       for (let i = 0; i < childCount; i++) {
         const child = ctx.getChild(i);
         if (child && (child instanceof ParserRuleContext || (child as any).mockRuleName)) {
-          const ruleName = this.getRuleName(child as ParserRuleContext);
+          const ruleName = this.getCachedRuleName(child as ParserRuleContext);
           if (ruleName === type) {
             return child as ParserRuleContext;
           }
@@ -769,7 +769,7 @@ export class CobolASTBuilder {
       const children = mockCtx.children || mockCtx.mockChildren || [];
       for (const child of children) {
         if (child) {
-          const ruleName = this.getRuleName(child);
+          const ruleName = this.getCachedRuleName(child);
           if (ruleName === type) {
             return child;
           }
@@ -791,7 +791,7 @@ export class CobolASTBuilder {
       for (let i = 0; i < ctx.getChildCount(); i++) {
         const child = ctx.getChild(i);
         if (child && (child instanceof ParserRuleContext || this.isParserRuleContext(child))) {
-          const ruleName = this.getRuleName(child as ParserRuleContext);
+          const ruleName = this.getCachedRuleName(child as ParserRuleContext);
           if (types.includes(ruleName)) {
             results.push(child as ParserRuleContext);
           }
@@ -803,7 +803,7 @@ export class CobolASTBuilder {
       const children = mockCtx.children || mockCtx.mockChildren || [];
       for (const child of children) {
         if (child) {
-          const ruleName = this.getRuleName(child);
+          const ruleName = this.getCachedRuleName(child);
           if (types.includes(ruleName)) {
             results.push(child);
           }
@@ -838,7 +838,7 @@ export class CobolASTBuilder {
               return text.trim();
             }
           } else if (child instanceof ParserRuleContext) {
-            const ruleName = this.getRuleName(child);
+            const ruleName = this.getCachedRuleName(child);
             if (ruleName === 'programName' || ruleName === 'cobolWord') {
               return child.getText() || 'UNKNOWN-PROGRAM';
             }
@@ -971,7 +971,7 @@ export class CobolASTBuilder {
           }
         }
       } else if (child instanceof ParserRuleContext) {
-        const ruleName = this.getRuleName(child);
+        const ruleName = this.getCachedRuleName(child);
         if (ruleName === 'paragraphName' || ruleName === 'cobolWord') {
           return (child.getText() || 'UNKNOWN-PARAGRAPH').toUpperCase();
         }
@@ -1190,7 +1190,7 @@ export class CobolASTBuilder {
       }
     }
     
-    return operands.map(op => op.replace(/["']/g, '').toUpperCase());
+    return operands.map(op => op.replace(/["']/g, '').trim().toUpperCase());
   }
 
   /**

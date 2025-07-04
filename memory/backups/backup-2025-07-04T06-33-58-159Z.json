@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-07-02T08:13:34.818Z",
+  "timestamp": "2025-07-04T06:33:58.159Z",
   "version": "1.0",
   "entries": [
     {
@@ -1675,29 +1675,90 @@
       "checksum": "342f50681e0f6e0506a05ba3a7d9d770b809320de7737d524274d949ba1b06bd",
       "references": [],
       "dependencies": []
+    },
+    {
+      "id": "entry_mcoffclj_12kkmal58",
+      "key": "swarm-auto-centralized-1751609354139/ast-builder/operands-fix",
+      "value": {
+        "step": "Operands Fix Implementation",
+        "timestamp": "2025-07-04T06:21:36.630Z",
+        "file_modified": "src/ast/builder.ts",
+        "method_fixed": "extractStatementOperands",
+        "changes": "Added .trim() to operand processing",
+        "test_status": "passing"
+      },
+      "type": "object",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-07-04T06:21:36.775Z",
+      "updatedAt": "2025-07-04T06:21:36.775Z",
+      "lastAccessedAt": "2025-07-04T06:33:55.915Z",
+      "version": 1,
+      "size": 257,
+      "compressed": false,
+      "checksum": "e86f52a172c210dfd5e1402c8271cd391eeac51f341bd87b3fa0c3c0fceab4a7",
+      "references": [],
+      "dependencies": []
+    },
+    {
+      "id": "entry_mcofu7df_z5n2bequ4",
+      "key": "swarm-auto-centralized-1751609354139/verification/test-results",
+      "value": {
+        "step": "Test Verification Complete",
+        "timestamp": "2025-07-04T06:33:09.645Z",
+        "target_tests": {
+          "statement_analysis": "passing",
+          "cache_performance": "passing"
+        },
+        "full_suite_status": "passing - all 172 tests passed",
+        "phase_2_ready": true,
+        "next_actions": [
+          "Phase 2 implementation is complete and ready for final review",
+          "All originally failing tests are now passing",
+          "No regressions introduced in full test suite"
+        ]
+      },
+      "type": "object",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-07-04T06:33:09.843Z",
+      "updatedAt": "2025-07-04T06:33:09.843Z",
+      "lastAccessedAt": "2025-07-04T06:33:09.843Z",
+      "version": 1,
+      "size": 432,
+      "compressed": false,
+      "checksum": "64e8f2fa11e3e119a4d8a16fcdc499037bfdaf0f50ea12ffc710b99e13f62c9d",
+      "references": [],
+      "dependencies": []
     }
   ],
   "statistics": {
     "overview": {
-      "totalEntries": 74,
-      "totalSize": 213154,
+      "totalEntries": 76,
+      "totalSize": 213843,
       "compressedEntries": 48,
-      "compressionRatio": -13.227461065866553,
-      "indexSize": 3700,
-      "memoryUsage": 11216144,
+      "compressionRatio": -12.56001906447879,
+      "indexSize": 3800,
+      "memoryUsage": 11187648,
       "diskUsage": 0
     },
     "distribution": {
       "byNamespace": {
         "default": {
-          "count": 74,
-          "size": 213154
+          "count": 76,
+          "size": 213843
         }
       },
       "byType": {
         "object": {
-          "count": 31,
-          "size": 93991
+          "count": 33,
+          "size": 94680
         },
         "string": {
           "count": 43,
@@ -1706,27 +1767,27 @@
       },
       "byOwner": {
         "system": {
-          "count": 74,
-          "size": 213154
+          "count": 76,
+          "size": 213843
         }
       },
       "byAccessLevel": {
         "shared": {
-          "count": 74,
-          "size": 213154
+          "count": 76,
+          "size": 213843
         }
       }
     },
     "temporal": {
-      "entriesCreatedLast24h": 74,
-      "entriesUpdatedLast24h": 74,
-      "entriesAccessedLast24h": 74,
+      "entriesCreatedLast24h": 2,
+      "entriesUpdatedLast24h": 2,
+      "entriesAccessedLast24h": 2,
       "oldestEntry": "2025-07-01T13:50:44.321Z",
-      "newestEntry": "2025-07-02T08:13:34.804Z"
+      "newestEntry": "2025-07-04T06:33:09.843Z"
     },
     "performance": {
       "averageQueryTime": 0,
-      "averageWriteTime": 1,
+      "averageWriteTime": 0,
       "cacheHitRatio": 0,
       "indexEfficiency": 0.95
     },
