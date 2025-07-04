@@ -57,9 +57,37 @@ export {
   StatementType
 } from './core/types';
 
+// Phase 3: COPY Statement Processing
+export {
+  CopyProcessor,
+  CopybookResolver,
+  FileSystemCopybookFinder,
+  InMemoryCopybookCache,
+  ReplacingProcessor,
+  DependencyTracker,
+  CopyStatementVisitor,
+  CopyErrorHandler,
+  createCopyProcessor,
+  getDefaultCopybookConfiguration,
+  processCopyStatement,
+  // Types
+  CopybookConfiguration,
+  CopyStatementInfo,
+  ReplacingClause,
+  ReplacingPattern,
+  PseudoText,
+  CopybookMetadata,
+  ResolvedCopybook,
+  CopybookDependency,
+  ProcessingResult,
+  CopyProcessingError,
+  PreprocessedSource,
+  DEFAULT_COPYBOOK_CONFIG
+} from './copy';
+
 // Version information
-export const VERSION = '1.0.0-alpha-phase2';
-export const PHASE = 'Phase 2 - Complete Parsing Workflow';
+export const VERSION = '1.0.0-alpha-phase3';
+export const PHASE = 'Phase 3 - COPY Statement Processing';
 
 // Quick start function for integration testing
 export async function quickAnalyze(cobolSource: string, fileName?: string) {
@@ -68,10 +96,11 @@ export async function quickAnalyze(cobolSource: string, fileName?: string) {
 }
 
 console.log(`🚀 COBOL Static Program Analyzer v${VERSION} - ${PHASE}`);
-console.log('📁 Phase 2 Integration Complete');
-console.log('🧪 Integration test suite ready');
-console.log('🏗️  Complete parsing workflow integrated');
-console.log('👁️  AST building and error handling integrated');
-console.log('⚡ Ready for Phase 3 - COPY statement processing');
+console.log('📁 Phase 3 COPY Processing Complete');
+console.log('📋 COPY statement resolution implemented');
+console.log('🔄 REPLACING clause processing integrated');
+console.log('🕸️  Circular dependency detection active');
+console.log('🗂️  File system copybook finder ready');
+console.log('⚡ Integrated with Phase 2 parsing pipeline');
 console.log('💡 Use quickAnalyze() for immediate testing');
 console.log('🔧 Use CobolAnalyzer class for full control');

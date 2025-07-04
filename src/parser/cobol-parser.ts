@@ -273,19 +273,31 @@ export class CobolParser {
     copybooksIncluded: string[];
   }> {
     try {
-      // Create preprocessor
-      const inputStream = CharStream.fromString(source);
-      const lexer = new Cobol85PreprocessorLexer(inputStream);
-      const tokenStream = new CommonTokenStream(lexer);
-      const parser = new Cobol85PreprocessorParser(tokenStream);
+      // Phase 3: COPY statement processing integration
+      const { CopyProcessor } = await import('../copy');
       
-      // Configure error handling for preprocessor
-      this.configureParser(parser);
+      const copyProcessor = new CopyProcessor({
+        searchPaths: this.config.copybookPaths,
+        cacheEnabled: true,
+        maxNestingLevel: 10,
+        encoding: this.config.encoding,
+        errorRecovery: this.config.errorRecovery
+      });
       
-      // For now, return source as-is (COPY processing will be implemented in Phase 3)
+      const preprocessResult = await copyProcessor.process(source);
+      
+      // Add copy processing errors to parser errors
+      for (const copyError of preprocessResult.errors) {
+        this.addError(
+          copyError.type,
+          copyError.message,
+          copyError.location
+        );
+      }
+      
       return {
-        processedSource: source,
-        copybooksIncluded: []
+        processedSource: preprocessResult.processedSource,
+        copybooksIncluded: preprocessResult.includedCopybooks.map(cb => cb.name)
       };
       
     } catch (error) {
