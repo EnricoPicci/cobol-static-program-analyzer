@@ -1,0 +1,6 @@
+Run all tests but performance tests
+ npm run test -- --testPathIgnorePatterns="Performance\.test\.ts|performance"
+
+  Or alternatively, for more precision:
+
+  npm run test -- --testPathIgnorePatterns=".*[Pp]erformance.*\.test\.ts"

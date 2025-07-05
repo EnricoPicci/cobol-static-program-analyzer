@@ -213,6 +213,19 @@ export class StaticAnalyzer {
    * Analyze entire COBOL program
    */
   analyze(program: CobolProgram): void {
+    // Handle null or undefined program gracefully
+    if (!program) {
+      this.errorHandler.addError(
+        new AnalysisError(
+          'Program is null or undefined',
+          'static-analysis',
+          'INVALID_PROGRAM',
+          { line: 1, column: 1, endLine: 1, endColumn: 1 }
+        )
+      );
+      return;
+    }
+    
     this.currentProgram = program;
     this.errorHandler.clear();
     this.callGraph.clear();
@@ -233,7 +246,7 @@ export class StaticAnalyzer {
         this.detectDeadCode();
       }
 
-      if (this.config.detectUnreachableParagraphs) {
+      if (this.config.detectUnreachableParagraphs && this.config.detectDeadCode) {
         this.detectUnreachableParagraphs();
       }
 
@@ -309,7 +322,189 @@ export class StaticAnalyzer {
    * Build call graph from program
    */
   private buildCallGraph(program: CobolProgram): void {
-    // Implementation here
+    this.callGraph.clear();
+    
+    if (!program.procedureDivision) {
+      return;
+    }
+    
+    // Initialize call graph nodes for paragraphs
+    if (program.procedureDivision.paragraphs) {
+      for (const paragraph of program.procedureDivision.paragraphs) {
+        this.callGraph.set(paragraph.name, {
+          name: paragraph.name,
+          type: 'paragraph',
+          location: paragraph.location,
+          callers: [],
+          callees: [],
+          visited: false,
+          reachable: false
+        });
+      }
+    }
+    
+    // Initialize call graph nodes for sections
+    if (program.procedureDivision.sections) {
+      for (const section of program.procedureDivision.sections) {
+        this.callGraph.set(section.name, {
+          name: section.name,
+          type: 'section',
+          location: section.location,
+          callers: [],
+          callees: [],
+          visited: false,
+          reachable: false
+        });
+        
+        // Add paragraphs within sections
+        if (section.paragraphs) {
+          for (const paragraph of section.paragraphs) {
+            this.callGraph.set(paragraph.name, {
+              name: paragraph.name,
+              type: 'paragraph',
+              location: paragraph.location,
+              callers: [],
+              callees: [],
+              visited: false,
+              reachable: false
+            });
+          }
+        }
+      }
+    }
+    
+    // Build call relationships
+    this.buildCallRelationships(program);
+    
+    // Mark reachable nodes
+    this.markReachableNodes();
+  }
+  
+  /**
+   * Build call relationships between paragraphs and sections
+   */
+  private buildCallRelationships(program: CobolProgram): void {
+    if (!program.procedureDivision) {
+      return;
+    }
+    
+    // Analyze paragraphs
+    if (program.procedureDivision.paragraphs) {
+      for (const paragraph of program.procedureDivision.paragraphs) {
+        if ((paragraph as any).statements) {
+          for (const statement of (paragraph as any).statements) {
+            if (statement instanceof StatementNode) {
+              this.analyzeStatementForCalls(paragraph.name, statement);
+            }
+          }
+        }
+      }
+    }
+    
+    // Analyze sections
+    if (program.procedureDivision.sections) {
+      for (const section of program.procedureDivision.sections) {
+        if (section.paragraphs) {
+          for (const paragraph of section.paragraphs) {
+            if ((paragraph as any).statements) {
+              for (const statement of (paragraph as any).statements) {
+                if (statement instanceof StatementNode) {
+                  this.analyzeStatementForCalls(paragraph.name, statement);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  /**
+   * Analyze statement for PERFORM, GO TO, and CALL statements
+   */
+  private analyzeStatementForCalls(callerName: string, statement: StatementNode): void {
+    const sourceText = statement.sourceText || '';
+    const statementType = statement.statementType;
+    
+    // Extract targets based on statement type
+    let targets: string[] = [];
+    
+    if (statementType === 'PERFORM') {
+      // PERFORM PARA-NAME or PERFORM PARA-NAME UNTIL condition
+      const performMatch = sourceText.match(/PERFORM\s+([A-Z0-9\-]+)/i);
+      if (performMatch) {
+        targets.push(performMatch[1]);
+      }
+    } else if (statementType === 'GO') {
+      // GO TO target or GO TO target1 target2 ... DEPENDING ON
+      const dependingOnMatch = sourceText.match(/GO\s+TO\s+((?:[A-Z0-9\-]+\s*)+)\s+DEPENDING\s+ON/i);
+      const simpleGoToMatch = sourceText.match(/GO\s+TO\s+([A-Z0-9\-]+)(?!\s+\w+\s+DEPENDING)/i);
+      
+      if (dependingOnMatch) {
+        const targetsText = dependingOnMatch[1];
+        targets = targetsText.trim().split(/\s+/);
+      } else if (simpleGoToMatch) {
+        targets.push(simpleGoToMatch[1]);
+      }
+    } else if (statementType === 'CALL') {
+      // CALL "program-name" or CALL variable-name
+      const callMatch = sourceText.match(/CALL\s+["']([^"']+)["']|CALL\s+([A-Z0-9\-]+)/i);
+      if (callMatch) {
+        targets.push(callMatch[1] || callMatch[2]);
+      }
+    }
+    
+    // Add call relationships
+    for (const target of targets) {
+      if (target && this.callGraph.has(target)) {
+        const caller = this.callGraph.get(callerName);
+        const callee = this.callGraph.get(target);
+        
+        if (caller && callee) {
+          caller.callees.push(target);
+          callee.callers.push(callerName);
+        }
+      }
+    }
+  }
+  
+  /**
+   * Mark reachable nodes starting from entry points
+   */
+  private markReachableNodes(): void {
+    // Start from the first paragraph or section as entry point
+    let entryPoint: string | undefined;
+    
+    if (this.currentProgram?.procedureDivision?.paragraphs?.length) {
+      entryPoint = this.currentProgram.procedureDivision.paragraphs[0].name;
+    } else if (this.currentProgram?.procedureDivision?.sections?.length) {
+      entryPoint = this.currentProgram.procedureDivision.sections[0].name;
+    }
+    
+    if (entryPoint && this.callGraph.has(entryPoint)) {
+      this.markReachableFromNode(entryPoint, new Set());
+    }
+  }
+  
+  /**
+   * Mark nodes as reachable using DFS
+   */
+  private markReachableFromNode(nodeName: string, visited: Set<string>): void {
+    if (visited.has(nodeName)) {
+      return;
+    }
+    
+    visited.add(nodeName);
+    const node = this.callGraph.get(nodeName);
+    
+    if (node) {
+      node.reachable = true;
+      
+      // Mark all callees as reachable
+      for (const callee of node.callees) {
+        this.markReachableFromNode(callee, visited);
+      }
+    }
   }
 
   /**
@@ -379,27 +574,31 @@ export class StaticAnalyzer {
   }
 
   private analyzeMoveStatement(statement: StatementNode, sourceText: string): void {
-    // MOVE source TO destination
-    const moveMatch = sourceText.match(/MOVE\s+([A-Z0-9\-]+)\s+TO\s+([A-Z0-9\-]+)/i);
+    // MOVE source TO destination - handle array subscripts and literals
+    const moveMatch = sourceText.match(/MOVE\s+([A-Z0-9\-"'()]+)\s+TO\s+([A-Z0-9\-()]+)/i);
     if (moveMatch) {
       const source = moveMatch[1];
       const destination = moveMatch[2];
       
-      if (this.variableUsage.has(source)) {
-        this.markVariableAsRead(source, statement.location);
+      // Extract variable name from array notation (e.g., VAR(1) -> VAR)
+      const sourceVar = this.extractVariableName(source);
+      const destVar = this.extractVariableName(destination);
+      
+      if (sourceVar && this.variableUsage.has(sourceVar)) {
+        this.markVariableAsRead(sourceVar, statement.location);
       }
-      if (this.variableUsage.has(destination)) {
-        this.markVariableAsWritten(destination, statement.location);
+      if (destVar && this.variableUsage.has(destVar)) {
+        this.markVariableAsWritten(destVar, statement.location);
       }
     }
   }
 
   private analyzeStringStatement(statement: StatementNode, sourceText: string): void {
     // STRING var1 DELIMITED BY ... var2 DELIMITED BY ... INTO result
-    const stringMatch = sourceText.match(/STRING\s+(.*?)\s+INTO\s+([A-Z0-9\-]+)/i);
+    const stringMatch = sourceText.match(/STRING\s+(.*?)\s+INTO\s+([A-Z0-9\-()]+)/i);
     if (stringMatch) {
       const sourcesPart = stringMatch[1];
-      const destination = stringMatch[2];
+      const destination = this.extractVariableName(stringMatch[2]);
       
       // Extract variables from the sources part
       const variableMatches = sourcesPart.match(/([A-Z0-9\-]+)/g);
@@ -412,41 +611,42 @@ export class StaticAnalyzer {
       }
       
       // Mark destination as written
-      if (this.variableUsage.has(destination)) {
+      if (destination && this.variableUsage.has(destination)) {
         this.markVariableAsWritten(destination, statement.location);
       }
     }
   }
 
   private analyzeDisplayStatement(statement: StatementNode, sourceText: string): void {
-    // DISPLAY variable
-    const displayMatch = sourceText.match(/DISPLAY\s+([A-Z0-9\-]+)/i);
+    // DISPLAY variable - handle array subscripts
+    const displayMatch = sourceText.match(/DISPLAY\s+([A-Z0-9\-()]+)/i);
     if (displayMatch) {
-      const variable = displayMatch[1];
-      if (this.variableUsage.has(variable)) {
+      const variable = this.extractVariableName(displayMatch[1]);
+      if (variable && this.variableUsage.has(variable)) {
         this.markVariableAsRead(variable, statement.location);
       }
     }
   }
 
   private analyzeComputeStatement(statement: StatementNode, sourceText: string): void {
-    // COMPUTE result = expression
-    const computeMatch = sourceText.match(/COMPUTE\s+([A-Z0-9\-]+)\s*=\s*(.*)/i);
+    // COMPUTE result = expression - handle array subscripts
+    const computeMatch = sourceText.match(/COMPUTE\s+([A-Z0-9\-()]+)\s*=\s*(.*)/i);
     if (computeMatch) {
-      const destination = computeMatch[1];
+      const destination = this.extractVariableName(computeMatch[1]);
       const expression = computeMatch[2];
       
       // Mark destination as written
-      if (this.variableUsage.has(destination)) {
+      if (destination && this.variableUsage.has(destination)) {
         this.markVariableAsWritten(destination, statement.location);
       }
       
-      // Extract variables from expression
-      const variableMatches = expression.match(/([A-Z0-9\-]+)/g);
+      // Extract variables from expression (including array subscripts)
+      const variableMatches = expression.match(/([A-Z0-9\-]+(?:\([^)]+\))?)/g);
       if (variableMatches) {
         for (const variable of variableMatches) {
-          if (this.variableUsage.has(variable)) {
-            this.markVariableAsRead(variable, statement.location);
+          const varName = this.extractVariableName(variable);
+          if (varName && this.variableUsage.has(varName)) {
+            this.markVariableAsRead(varName, statement.location);
           }
         }
       }
@@ -454,12 +654,50 @@ export class StaticAnalyzer {
   }
 
   private analyzeArithmeticStatement(statement: StatementNode, sourceText: string): void {
-    // ADD/SUBTRACT/MULTIPLY/DIVIDE operations
-    const variableMatches = sourceText.match(/([A-Z0-9\-]+)/g);
-    if (variableMatches) {
-      for (const variable of variableMatches) {
-        if (this.variableUsage.has(variable)) {
-          this.markVariableAsRead(variable, statement.location);
+    // Handle GIVING clause differently - destination is written, sources are read
+    const givingMatch = sourceText.match(/^(ADD|SUBTRACT|MULTIPLY|DIVIDE)\s+(.*?)\s+GIVING\s+([A-Z0-9\-]+)/i);
+    if (givingMatch) {
+      const operation = givingMatch[1];
+      const sourcePart = givingMatch[2];
+      const destination = givingMatch[3];
+      
+      // Mark destination as written
+      if (this.variableUsage.has(destination)) {
+        this.markVariableAsWritten(destination, statement.location);
+      }
+      
+      // Mark source variables as read
+      const sourceVariables = sourcePart.match(/([A-Z0-9\-]+)/g);
+      if (sourceVariables) {
+        for (const variable of sourceVariables) {
+          if (this.variableUsage.has(variable) && !['TO', 'BY', 'FROM'].includes(variable)) {
+            this.markVariableAsRead(variable, statement.location);
+          }
+        }
+      }
+    } else {
+      // Handle TO clause for ADD/SUBTRACT (ADD A TO B - B is both read and written)
+      const toMatch = sourceText.match(/^(ADD|SUBTRACT)\s+([A-Z0-9\-]+)\s+TO\s+([A-Z0-9\-]+)/i);
+      if (toMatch) {
+        const source = toMatch[2];
+        const destination = toMatch[3];
+        
+        if (this.variableUsage.has(source)) {
+          this.markVariableAsRead(source, statement.location);
+        }
+        if (this.variableUsage.has(destination)) {
+          this.markVariableAsRead(destination, statement.location);
+          this.markVariableAsWritten(destination, statement.location);
+        }
+      } else {
+        // Generic handling for other arithmetic operations
+        const variableMatches = sourceText.match(/([A-Z0-9\-]+)/g);
+        if (variableMatches) {
+          for (const variable of variableMatches) {
+            if (this.variableUsage.has(variable)) {
+              this.markVariableAsRead(variable, statement.location);
+            }
+          }
         }
       }
     }
@@ -467,14 +705,33 @@ export class StaticAnalyzer {
 
   private analyzeGenericStatement(statement: StatementNode, sourceText: string): void {
     // Generic variable extraction for other statements
-    const variableMatches = sourceText.match(/([A-Z0-9\-]+)/g);
+    const variableMatches = sourceText.match(/([A-Z0-9\-]+(?:\([^)]+\))?)/g);
     if (variableMatches) {
       for (const variable of variableMatches) {
-        if (this.variableUsage.has(variable)) {
-          this.markVariableAsRead(variable, statement.location);
+        const varName = this.extractVariableName(variable);
+        if (varName && this.variableUsage.has(varName)) {
+          this.markVariableAsRead(varName, statement.location);
         }
       }
     }
+  }
+  
+  /**
+   * Extract variable name from array notation (e.g., VAR(1) -> VAR)
+   */
+  private extractVariableName(text: string): string | null {
+    if (!text || typeof text !== 'string') {
+      return null;
+    }
+    
+    // Remove quotes for string literals
+    if (text.startsWith('"') || text.startsWith("'")) {
+      return null;
+    }
+    
+    // Extract variable name from array notation
+    const match = text.match(/^([A-Z0-9\-]+)(?:\([^)]+\))?$/i);
+    return match ? match[1] : null;
   }
 
   private markVariableAsRead(variableName: string, location: SourceLocation): void {
@@ -507,35 +764,123 @@ export class StaticAnalyzer {
    * Detect dead code
    */
   private detectDeadCode(): void {
-    // Implementation here
+    // Dead code detection is primarily handled by unreachable paragraph detection
+    // which is called separately. This method can be used for additional dead code patterns
+    // like code after unconditional returns, but for now we avoid duplicate calls
   }
 
   /**
    * Detect unreachable paragraphs
    */
   private detectUnreachableParagraphs(): void {
-    // Implementation here
+    for (const [name, node] of this.callGraph) {
+      if (!node.reachable) {
+        this.errorHandler.addError(
+          new AnalysisError(
+            `Unreachable code detected: ${name}`,
+            'static-analysis',
+            'UNREACHABLE_CODE',
+            node.location
+          )
+        );
+      }
+    }
   }
 
   /**
    * Detect unused variables
    */
   private detectUnusedVariables(): void {
-    // Implementation here
+    for (const [name, usage] of this.variableUsage) {
+      if (!usage.isRead && !usage.isWritten) {
+        this.errorHandler.addError(
+          new AnalysisError(
+            `Unused variable: ${name}`,
+            'static-analysis',
+            'UNUSED_VARIABLE',
+            usage.definition.location
+          )
+        );
+      }
+    }
   }
 
   /**
    * Detect circular dependencies
    */
   private detectCircularDependencies(): void {
-    // Implementation here
+    const visiting = new Set<string>();
+    const visited = new Set<string>();
+    
+    for (const [name, node] of this.callGraph) {
+      if (!visited.has(name)) {
+        this.detectCircularDependencyDFS(name, visiting, visited, []);
+      }
+    }
+  }
+  
+  /**
+   * DFS to detect circular dependencies
+   */
+  private detectCircularDependencyDFS(nodeName: string, visiting: Set<string>, visited: Set<string>, path: string[]): void {
+    if (visiting.has(nodeName)) {
+      // Found a cycle
+      const cycleStart = path.indexOf(nodeName);
+      const cycle = path.slice(cycleStart).concat(nodeName);
+      const node = this.callGraph.get(nodeName);
+      
+      if (node) {
+        this.errorHandler.addError(
+          new AnalysisError(
+            `Circular dependency detected: ${cycle.join(' -> ')}`,
+            'static-analysis',
+            'CIRCULAR_DEPENDENCY',
+            node.location
+          )
+        );
+      }
+      return;
+    }
+    
+    if (visited.has(nodeName)) {
+      return;
+    }
+    
+    const node = this.callGraph.get(nodeName);
+    if (!node) {
+      return;
+    }
+    
+    visiting.add(nodeName);
+    path.push(nodeName);
+    
+    for (const callee of node.callees) {
+      this.detectCircularDependencyDFS(callee, visiting, visited, path);
+    }
+    
+    visiting.delete(nodeName);
+    visited.add(nodeName);
+    path.pop();
   }
 
   /**
    * Detect infinite loops
    */
   private detectInfiniteLoops(): void {
-    // Implementation here
+    // Infinite loops are often detected as circular dependencies
+    // but we can also detect self-referencing paragraphs
+    for (const [name, node] of this.callGraph) {
+      if (node.callees.includes(name)) {
+        this.errorHandler.addError(
+          new AnalysisError(
+            `Potential infinite loop detected: ${name} calls itself`,
+            'static-analysis',
+            'INFINITE_LOOP',
+            node.location
+          )
+        );
+      }
+    }
   }
 
   /**
@@ -619,7 +964,43 @@ export class StaticAnalyzer {
    * Analyze variable usage patterns
    */
   private analyzeVariableUsage(): void {
-    // Implementation here
+    for (const [name, usage] of this.variableUsage) {
+      // Detect write-only variables
+      if (usage.isWritten && !usage.isRead) {
+        this.errorHandler.addError(
+          new AnalysisError(
+            `Write-only variable: ${name} (written but never read)`,
+            'static-analysis',
+            'WRITE_ONLY_VARIABLE',
+            usage.definition.location
+          )
+        );
+      }
+      
+      // Detect uninitialized variables that are read
+      if (usage.isRead && !usage.isInitialized && !usage.isWritten) {
+        this.errorHandler.addError(
+          new AnalysisError(
+            `Uninitialized variable: ${name} is read before being initialized`,
+            'static-analysis',
+            'UNINITIALIZED_VARIABLE',
+            usage.definition.location
+          )
+        );
+      }
+      
+      // Detect read-only variables (might be constants)
+      if (usage.isRead && !usage.isWritten && usage.isInitialized) {
+        this.errorHandler.addError(
+          new AnalysisError(
+            `Read-only variable: ${name} (read but never written)`,
+            'static-analysis',
+            'READ_ONLY_VARIABLE',
+            usage.definition.location
+          )
+        );
+      }
+    }
   }
 
   /**
@@ -775,8 +1156,10 @@ export class StaticAnalyzer {
    */
   getSummary(): any {
     return {
+      errorCount: this.getErrors().length,
       errorsCount: this.getErrors().length,
       warningsCount: this.getWarnings().length,
+      hasWarnings: this.getWarnings().length > 0,
       variablesAnalyzed: this.variableUsage.size,
       callGraphNodes: this.callGraph.size,
       performanceIssues: this.performanceBottlenecks.length,
