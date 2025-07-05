@@ -1,0 +1,2121 @@
+/**
+ * Static Analyzer - Tier 3 Error Detection
+ * Detects static analysis issues like dead code, unused variables, etc.
+ */
+
+import { CobolProgram } from '../ast/nodes/CobolProgram';
+import { SectionNode } from '../ast/nodes/SectionNode';
+import { ParagraphNode } from '../ast/nodes/ParagraphNode';
+import { StatementNode } from '../ast/nodes/StatementNode';
+import { DataDivision } from '../ast/nodes/DataDivision';
+import { ProcedureDivision } from '../ast/nodes/ProcedureDivision';
+import { SourceLocation, VariableDefinition, CallReference } from '../core/types';
+import { AnalysisError, CobolErrorHandler } from '../parser/error-handler';
+
+/**
+ * Static analysis configuration
+ */
+export interface StaticAnalysisConfig {
+  /** Detect dead code */
+  detectDeadCode: boolean;
+  
+  /** Detect unreachable paragraphs */
+  detectUnreachableParagraphs: boolean;
+  
+  /** Detect unused variables */
+  detectUnusedVariables: boolean;
+  
+  /** Detect circular dependencies */
+  detectCircularDependencies: boolean;
+  
+  /** Detect infinite loops */
+  detectInfiniteLoops: boolean;
+  
+  /** Detect unreferenced sections */
+  detectUnreferencedSections: boolean;
+  
+  /** Check for missing GO TO targets */
+  checkMissingGoToTargets: boolean;
+  
+  /** Analyze variable usage patterns */
+  analyzeVariableUsage: boolean;
+  
+  /** Calculate code quality metrics */
+  calculateCodeQualityMetrics: boolean;
+  
+  /** Analyze performance bottlenecks */
+  analyzePerformanceBottlenecks: boolean;
+  
+  /** Detect security vulnerabilities */
+  detectSecurityVulnerabilities: boolean;
+  
+  /** Perform control flow analysis */
+  performControlFlowAnalysis: boolean;
+  
+  /** Perform data flow analysis */
+  performDataFlowAnalysis: boolean;
+  
+  /** Analyze code maintainability */
+  analyzeMaintainability: boolean;
+  
+  /** Detect code smells */
+  detectCodeSmells: boolean;
+  
+  /** Analyze complexity metrics */
+  analyzeComplexityMetrics: boolean;
+}
+
+export const DEFAULT_STATIC_ANALYSIS_CONFIG: StaticAnalysisConfig = {
+  detectDeadCode: true,
+  detectUnreachableParagraphs: true,
+  detectUnusedVariables: true,
+  detectCircularDependencies: true,
+  detectInfiniteLoops: true,
+  detectUnreferencedSections: true,
+  checkMissingGoToTargets: true,
+  analyzeVariableUsage: true,
+  calculateCodeQualityMetrics: true,
+  analyzePerformanceBottlenecks: true,
+  detectSecurityVulnerabilities: true,
+  performControlFlowAnalysis: true,
+  performDataFlowAnalysis: true,
+  analyzeMaintainability: true,
+  detectCodeSmells: true,
+  analyzeComplexityMetrics: true
+};
+
+/**
+ * Call graph node for dependency analysis
+ */
+interface CallGraphNode {
+  name: string;
+  type: 'section' | 'paragraph';
+  location: SourceLocation;
+  callers: string[];
+  callees: string[];
+  visited: boolean;
+  reachable: boolean;
+}
+
+/**
+ * Variable usage information
+ */
+interface VariableUsage {
+  name: string;
+  definition: VariableDefinition;
+  references: SourceLocation[];
+  isRead: boolean;
+  isWritten: boolean;
+  isInitialized: boolean;
+  readCount: number;
+  writeCount: number;
+  firstUse?: SourceLocation;
+  lastUse?: SourceLocation;
+  dataFlowPaths: DataFlowPath[];
+}
+
+/**
+ * Code quality metrics
+ */
+interface CodeQualityMetrics {
+  cyclomaticComplexity: number;
+  nestingDepth: number;
+  linesOfCode: number;
+  halsteadMetrics: HalsteadMetrics;
+  maintainabilityIndex: number;
+  technicalDebt: number;
+  codeSmells: string[];
+}
+
+/**
+ * Halstead complexity metrics
+ */
+interface HalsteadMetrics {
+  vocabulary: number;
+  length: number;
+  calculatedLength: number;
+  volume: number;
+  difficulty: number;
+  effort: number;
+  timeRequiredToProgram: number;
+  numberOfDeliveredBugs: number;
+}
+
+/**
+ * Performance bottleneck information
+ */
+interface PerformanceBottleneck {
+  type: 'nested-loop' | 'large-perform' | 'excessive-io' | 'string-concatenation' | 'inefficient-search';
+  location: SourceLocation;
+  description: string;
+  impact: 'low' | 'medium' | 'high';
+  suggestion: string;
+}
+
+/**
+ * Security vulnerability information
+ */
+interface SecurityVulnerability {
+  type: 'buffer-overflow' | 'sql-injection' | 'path-traversal' | 'unsafe-file-operation' | 'hardcoded-credential';
+  location: SourceLocation;
+  description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  remediation: string;
+}
+
+/**
+ * Control flow node
+ */
+interface ControlFlowNode {
+  id: string;
+  type: 'entry' | 'exit' | 'statement' | 'branch' | 'merge' | 'loop-header' | 'loop-exit';
+  location: SourceLocation;
+  predecessors: string[];
+  successors: string[];
+  dominators: string[];
+  postDominators: string[];
+}
+
+/**
+ * Data flow path
+ */
+interface DataFlowPath {
+  variable: string;
+  definition: SourceLocation;
+  uses: SourceLocation[];
+  reachable: boolean;
+  hasUse: boolean;
+  isLive: boolean;
+}
+
+/**
+ * Static analyzer for COBOL programs
+ */
+export class StaticAnalyzer {
+  private config: StaticAnalysisConfig;
+  private errorHandler: CobolErrorHandler;
+  private currentProgram?: CobolProgram;
+  private callGraph: Map<string, CallGraphNode> = new Map();
+  private variableUsage: Map<string, VariableUsage> = new Map();
+  private codeQualityMetrics?: CodeQualityMetrics;
+  private performanceBottlenecks: PerformanceBottleneck[] = [];
+  private securityVulnerabilities: SecurityVulnerability[] = [];
+  private controlFlowGraph: Map<string, ControlFlowNode> = new Map();
+  private dataFlowPaths: Map<string, DataFlowPath[]> = new Map();
+
+  constructor(config: StaticAnalysisConfig = DEFAULT_STATIC_ANALYSIS_CONFIG) {
+    this.config = config;
+    this.errorHandler = new CobolErrorHandler();
+  }
+
+  /**
+   * Analyze entire COBOL program
+   */
+  analyze(program: CobolProgram): void {
+    this.currentProgram = program;
+    this.errorHandler.clear();
+    this.callGraph.clear();
+    this.variableUsage.clear();
+    this.codeQualityMetrics = undefined;
+    this.performanceBottlenecks = [];
+    this.securityVulnerabilities = [];
+    this.controlFlowGraph.clear();
+    this.dataFlowPaths.clear();
+
+    try {
+      // Build call graph and usage maps
+      this.buildCallGraph(program);
+      this.buildVariableUsageMap(program);
+
+      // Tier 3 Static Analysis
+      if (this.config.detectDeadCode) {
+        this.detectDeadCode();
+      }
+
+      if (this.config.detectUnreachableParagraphs) {
+        this.detectUnreachableParagraphs();
+      }
+
+      if (this.config.detectUnusedVariables) {
+        this.detectUnusedVariables();
+      }
+
+      if (this.config.detectCircularDependencies) {
+        this.detectCircularDependencies();
+      }
+
+      if (this.config.detectInfiniteLoops) {
+        this.detectInfiniteLoops();
+      }
+
+      if (this.config.detectUnreferencedSections) {
+        this.detectUnreferencedSections();
+      }
+
+      if (this.config.checkMissingGoToTargets) {
+        this.checkMissingGoToTargets();
+      }
+
+      if (this.config.analyzeVariableUsage) {
+        this.analyzeVariableUsagePatterns();
+      }
+
+      if (this.config.calculateCodeQualityMetrics) {
+        this.calculateCodeQualityMetrics();
+      }
+
+      if (this.config.analyzePerformanceBottlenecks) {
+        this.analyzePerformanceBottlenecks();
+      }
+
+      if (this.config.detectSecurityVulnerabilities) {
+        this.detectSecurityVulnerabilities();
+      }
+
+      if (this.config.performControlFlowAnalysis) {
+        this.performControlFlowAnalysis();
+      }
+
+      if (this.config.performDataFlowAnalysis) {
+        this.performDataFlowAnalysis();
+      }
+
+      if (this.config.analyzeMaintainability) {
+        this.analyzeMaintainability();
+      }
+
+      if (this.config.detectCodeSmells) {
+        this.detectCodeSmells();
+      }
+
+      if (this.config.analyzeComplexityMetrics) {
+        this.analyzeComplexityMetrics();
+      }
+
+    } catch (error) {
+      this.errorHandler.addAnalysisWarning(
+        `Static analysis failed: ${error instanceof Error ? error.message : String(error)}`,
+        'static-analysis',
+        'STATIC_ANALYSIS_FAILED',
+        { line: 1, column: 1, endLine: 1, endColumn: 1 }
+      );
+    }
+  }
+
+  /**
+   * Build call graph from procedure division
+   */
+  private buildCallGraph(program: CobolProgram): void {
+    if (!program.procedureDivision) return;
+
+    const procDiv = program.procedureDivision;
+
+    // Add all sections and paragraphs to call graph
+    procDiv.sections.forEach(section => {
+      this.callGraph.set(section.name, {
+        name: section.name,
+        type: 'section',
+        location: section.location,
+        callers: [],
+        callees: [],
+        visited: false,
+        reachable: false
+      });
+
+      section.paragraphs.forEach(paragraph => {
+        this.callGraph.set(paragraph.name, {
+          name: paragraph.name,
+          type: 'paragraph',
+          location: paragraph.location,
+          callers: [],
+          callees: [],
+          visited: false,
+          reachable: false
+        });
+      });
+    });
+
+    procDiv.paragraphs.forEach(paragraph => {
+      this.callGraph.set(paragraph.name, {
+        name: paragraph.name,
+        type: 'paragraph',
+        location: paragraph.location,
+        callers: [],
+        callees: [],
+        visited: false,
+        reachable: false
+      });
+    });
+
+    // Build call relationships
+    this.analyzeCallRelationships(procDiv);
+  }
+
+  /**
+   * Analyze call relationships in procedure division
+   */
+  private analyzeCallRelationships(procDiv: ProcedureDivision): void {
+    // Process sections
+    procDiv.sections.forEach(section => {
+      this.analyzeNodeCalls(section);
+    });
+
+    // Process standalone paragraphs
+    procDiv.paragraphs.forEach(paragraph => {
+      this.analyzeNodeCalls(paragraph);
+    });
+  }
+
+  /**
+   * Analyze calls from a section or paragraph
+   */
+  private analyzeNodeCalls(node: SectionNode | ParagraphNode): void {
+    const callerName = node.name;
+    const callerNode = this.callGraph.get(callerName);
+    if (!callerNode) return;
+
+    // Extract calls from statements
+    const calls = this.extractCallsFromNode(node);
+    
+    calls.forEach(call => {
+      const calleeNode = this.callGraph.get(call.name);
+      if (calleeNode) {
+        callerNode.callees.push(call.name);
+        calleeNode.callers.push(callerName);
+      }
+    });
+  }
+
+  /**
+   * Extract calls from statements in a node
+   */
+  private extractCallsFromNode(node: SectionNode | ParagraphNode): CallReference[] {
+    const calls: CallReference[] = [];
+    
+    // Start with existing call references
+    calls.push(...node.calledSectionsParagraphs);
+    
+    // Parse statements to find additional calls
+    const statements = (node as any).statements || [];
+    for (const statement of statements) {
+      calls.push(...this.extractCallsFromStatement(statement));
+    }
+    
+    return calls;
+  }
+
+  /**
+   * Extract calls from a single statement
+   */
+  private extractCallsFromStatement(statement: StatementNode): CallReference[] {
+    const calls: CallReference[] = [];
+    
+    switch (statement.statementType) {
+      case 'PERFORM':
+        calls.push(...this.parsePerformStatement(statement));
+        break;
+      case 'GO':
+        calls.push(...this.parseGoToStatement(statement));
+        break;
+      case 'CALL':
+        calls.push(...this.parseCallStatement(statement));
+        break;
+    }
+    
+    // Recursively check nested statements
+    if (statement.nestedStatements) {
+      for (const nested of statement.nestedStatements) {
+        calls.push(...this.extractCallsFromStatement(nested));
+      }
+    }
+    
+    return calls;
+  }
+
+  /**
+   * Parse PERFORM statement to extract target
+   */
+  private parsePerformStatement(statement: StatementNode): CallReference[] {
+    const calls: CallReference[] = [];
+    
+    if (statement.target) {
+      // PERFORM target is already parsed
+      calls.push({
+        name: statement.target,
+        type: 'paragraph', // Default to paragraph, could be section
+        location: statement.location,
+        context: 'PERFORM'
+      });
+    } else if (statement.sourceText) {
+      // Parse PERFORM statement from source text
+      const performMatch = statement.sourceText.match(/PERFORM\s+([A-Z0-9-]+)/i);
+      if (performMatch) {
+        const targetName = performMatch[1];
+        calls.push({
+          name: targetName,
+          type: 'paragraph',
+          location: statement.location,
+          context: 'PERFORM'
+        });
+      }
+    }
+    
+    return calls;
+  }
+
+  /**
+   * Parse GO TO statement to extract target
+   */
+  private parseGoToStatement(statement: StatementNode): CallReference[] {
+    const calls: CallReference[] = [];
+    
+    if (statement.target) {
+      calls.push({
+        name: statement.target,
+        type: 'paragraph',
+        location: statement.location,
+        context: 'GO TO'
+      });
+    } else if (statement.sourceText) {
+      // Parse GO TO statement from source text
+      // Handle both single target and multiple targets (GO TO DEPENDING ON)
+      const dependingMatch = statement.sourceText.match(/GO\s+TO\s+([A-Z0-9-\s]+)\s+DEPENDING\s+ON/i);
+      if (dependingMatch) {
+        // Multiple targets in DEPENDING ON clause
+        const targets = dependingMatch[1].split(/\s+/).filter(target => target.trim());
+        for (const target of targets) {
+          calls.push({
+            name: target.trim(),
+            type: 'paragraph',
+            location: statement.location,
+            context: 'GO TO'
+          });
+        }
+      } else {
+        // Single target
+        const goToMatch = statement.sourceText.match(/GO\s+TO\s+([A-Z0-9-]+)/i);
+        if (goToMatch) {
+          const targetName = goToMatch[1];
+          calls.push({
+            name: targetName,
+            type: 'paragraph',
+            location: statement.location,
+            context: 'GO TO'
+          });
+        }
+      }
+    }
+    
+    return calls;
+  }
+
+  /**
+   * Parse CALL statement to extract program name
+   */
+  private parseCallStatement(statement: StatementNode): CallReference[] {
+    const calls: CallReference[] = [];
+    
+    if (statement.target) {
+      calls.push({
+        name: statement.target,
+        type: 'section', // CALL usually calls external programs
+        location: statement.location,
+        context: 'CALL'
+      });
+    } else if (statement.sourceText) {
+      // Parse CALL statement from source text
+      const callMatch = statement.sourceText.match(/CALL\s+['"]*([A-Z0-9-]+)['"]*|CALL\s+([A-Z0-9-]+)/i);
+      if (callMatch) {
+        const targetName = callMatch[1] || callMatch[2];
+        calls.push({
+          name: targetName,
+          type: 'section',
+          location: statement.location,
+          context: 'CALL'
+        });
+      }
+    }
+    
+    return calls;
+  }
+
+  /**
+   * Build variable usage map
+   */
+  private buildVariableUsageMap(program: CobolProgram): void {
+    if (!program.dataDivision) return;
+
+    const allVariables = [
+      ...program.dataDivision.workingStorageVariables,
+      ...program.dataDivision.fileVariables,
+      ...program.dataDivision.linkageVariables
+    ];
+
+    allVariables.forEach(variable => {
+      this.variableUsage.set(variable.name, {
+        name: variable.name,
+        definition: variable,
+        references: [],
+        isRead: false,
+        isWritten: false,
+        isInitialized: !!variable.initialValue,
+        readCount: 0,
+        writeCount: 0,
+        dataFlowPaths: []
+      });
+    });
+
+    // Analyze variable usage in procedure division
+    if (program.procedureDivision) {
+      this.analyzeVariableReferences(program.procedureDivision);
+    }
+  }
+
+  /**
+   * Analyze variable references in procedure division
+   */
+  private analyzeVariableReferences(procDiv: ProcedureDivision): void {
+    // Process sections
+    procDiv.sections.forEach(section => {
+      this.analyzeVariableReferencesInNode(section);
+    });
+
+    // Process standalone paragraphs
+    procDiv.paragraphs.forEach(paragraph => {
+      this.analyzeVariableReferencesInNode(paragraph);
+    });
+  }
+
+  /**
+   * Analyze variable references in a node
+   */
+  private analyzeVariableReferencesInNode(node: SectionNode | ParagraphNode): void {
+    // Parse statements to find variable references
+    const statements = (node as any).statements || [];
+    for (const statement of statements) {
+      this.analyzeVariableReferencesInStatement(statement);
+    }
+  }
+
+  /**
+   * Analyze variable references in a single statement
+   */
+  private analyzeVariableReferencesInStatement(statement: StatementNode): void {
+    // Extract variable references based on statement type
+    switch (statement.statementType) {
+      case 'MOVE':
+        this.analyzeMoveStatement(statement);
+        break;
+      case 'ADD':
+      case 'SUBTRACT':
+      case 'MULTIPLY':
+      case 'DIVIDE':
+        this.analyzeArithmeticStatement(statement);
+        break;
+      case 'COMPUTE':
+        this.analyzeComputeStatement(statement);
+        break;
+      case 'SET':
+        this.analyzeSetStatement(statement);
+        break;
+      case 'DISPLAY':
+        this.analyzeDisplayStatement(statement);
+        break;
+      case 'ACCEPT':
+        this.analyzeAcceptStatement(statement);
+        break;
+      case 'IF':
+        this.analyzeIfStatement(statement);
+        break;
+      case 'INITIALIZE':
+        this.analyzeInitializeStatement(statement);
+        break;
+      case 'STRING':
+        this.analyzeStringStatement(statement);
+        break;
+    }
+    
+    // Recursively analyze nested statements
+    if (statement.nestedStatements) {
+      for (const nested of statement.nestedStatements) {
+        this.analyzeVariableReferencesInStatement(nested);
+      }
+    }
+  }
+
+  /**
+   * Analyze MOVE statement for variable references
+   */
+  private analyzeMoveStatement(statement: StatementNode): void {
+    if (statement.sourceText) {
+      // Parse MOVE statement: MOVE source TO target
+      const moveMatch = statement.sourceText.match(/MOVE\s+([A-Z0-9-]+(?:\s*\([^)]+\))?)\s+TO\s+([A-Z0-9-]+(?:\s*\([^)]+\))?)/i);
+      if (moveMatch) {
+        const sourceVar = this.extractVariableName(moveMatch[1]);
+        const targetVar = this.extractVariableName(moveMatch[2]);
+        
+        // Source is read
+        this.recordVariableReference(sourceVar, statement.location, 'read');
+        
+        // Target is written
+        this.recordVariableReference(targetVar, statement.location, 'write');
+      }
+    }
+    
+    // Also check operands if available
+    if (statement.operands && statement.operands.length >= 2) {
+      const sourceVar = this.extractVariableName(statement.operands[0]);
+      const targetVar = this.extractVariableName(statement.operands[1]);
+      
+      this.recordVariableReference(sourceVar, statement.location, 'read');
+      this.recordVariableReference(targetVar, statement.location, 'write');
+    }
+  }
+
+  /**
+   * Analyze arithmetic statements (ADD, SUBTRACT, etc.)
+   */
+  private analyzeArithmeticStatement(statement: StatementNode): void {
+    if (statement.sourceText) {
+      // Parse arithmetic statement with GIVING clause
+      const givingMatch = statement.sourceText.match(/GIVING\s+([A-Z0-9-]+)/i);
+      if (givingMatch) {
+        const targetVar = this.extractVariableName(givingMatch[1]);
+        this.recordVariableReference(targetVar, statement.location, 'write');
+      }
+      
+      // Extract source operands - handle both comma-separated and TO syntax
+      const beforeGiving = statement.sourceText.split(/GIVING/i)[0];
+      
+      // First extract the command operands (after ADD/SUBTRACT etc, before TO)
+      const operandMatches = beforeGiving.match(/(?:ADD|SUBTRACT|MULTIPLY|DIVIDE)\s+([A-Z0-9-]+(?:\s*,\s*[A-Z0-9-]+)*)/i);
+      if (operandMatches) {
+        const operands = operandMatches[1].split(/\s*,\s*/);
+        for (const operand of operands) {
+          const varName = this.extractVariableName(operand);
+          if (varName) {
+            this.recordVariableReference(varName, statement.location, 'read');
+          }
+        }
+      }
+      
+      // Also extract TO operands (ADD VAR1 TO VAR2)
+      const toMatch = beforeGiving.match(/TO\s+([A-Z0-9-]+(?:\s*,\s*[A-Z0-9-]+)*)/i);
+      if (toMatch) {
+        const toOperands = toMatch[1].split(/\s*,\s*/);
+        for (const operand of toOperands) {
+          const varName = this.extractVariableName(operand);
+          if (varName) {
+            this.recordVariableReference(varName, statement.location, 'read');
+          }
+        }
+      }
+    }
+    
+    // Check operands array
+    if (statement.operands) {
+      for (const operand of statement.operands) {
+        const varName = this.extractVariableName(operand);
+        if (varName) {
+          this.recordVariableReference(varName, statement.location, 'read');
+        }
+      }
+    }
+    
+    // Check target
+    if (statement.target) {
+      const targetVar = this.extractVariableName(statement.target);
+      this.recordVariableReference(targetVar, statement.location, 'write');
+    }
+  }
+
+  /**
+   * Analyze COMPUTE statement
+   */
+  private analyzeComputeStatement(statement: StatementNode): void {
+    if (statement.sourceText) {
+      // Parse COMPUTE target = expression
+      const computeMatch = statement.sourceText.match(/COMPUTE\s+([A-Z0-9-]+)\s*=\s*(.+)/i);
+      if (computeMatch) {
+        const targetVar = this.extractVariableName(computeMatch[1]);
+        const expression = computeMatch[2];
+        
+        // Target is written
+        this.recordVariableReference(targetVar, statement.location, 'write');
+        
+        // Extract variables from expression
+        const varMatches = expression.match(/[A-Z][A-Z0-9-]*/gi);
+        if (varMatches) {
+          for (const varMatch of varMatches) {
+            const varName = this.extractVariableName(varMatch);
+            if (varName && varName !== targetVar) {
+              this.recordVariableReference(varName, statement.location, 'read');
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Analyze SET statement
+   */
+  private analyzeSetStatement(statement: StatementNode): void {
+    if (statement.sourceText) {
+      // Parse SET target TO value
+      const setMatch = statement.sourceText.match(/SET\s+([A-Z0-9-]+)\s+TO\s+([A-Z0-9-]+)/i);
+      if (setMatch) {
+        const targetVar = this.extractVariableName(setMatch[1]);
+        const sourceVar = this.extractVariableName(setMatch[2]);
+        
+        this.recordVariableReference(targetVar, statement.location, 'write');
+        this.recordVariableReference(sourceVar, statement.location, 'read');
+      }
+    }
+  }
+
+  /**
+   * Analyze DISPLAY statement
+   */
+  private analyzeDisplayStatement(statement: StatementNode): void {
+    if (statement.sourceText) {
+      // Extract variables from DISPLAY statement
+      const displayMatch = statement.sourceText.match(/DISPLAY\s+(.+)/i);
+      if (displayMatch) {
+        const items = displayMatch[1].split(/\s+/);
+        for (const item of items) {
+          const varName = this.extractVariableName(item);
+          if (varName) {
+            this.recordVariableReference(varName, statement.location, 'read');
+          }
+        }
+      }
+    }
+    
+    if (statement.operands) {
+      for (const operand of statement.operands) {
+        const varName = this.extractVariableName(operand);
+        if (varName) {
+          this.recordVariableReference(varName, statement.location, 'read');
+        }
+      }
+    }
+  }
+
+  /**
+   * Analyze ACCEPT statement
+   */
+  private analyzeAcceptStatement(statement: StatementNode): void {
+    if (statement.target) {
+      const targetVar = this.extractVariableName(statement.target);
+      this.recordVariableReference(targetVar, statement.location, 'write');
+    }
+    
+    if (statement.sourceText) {
+      const acceptMatch = statement.sourceText.match(/ACCEPT\s+([A-Z0-9-]+)/i);
+      if (acceptMatch) {
+        const targetVar = this.extractVariableName(acceptMatch[1]);
+        this.recordVariableReference(targetVar, statement.location, 'write');
+      }
+    }
+  }
+
+  /**
+   * Analyze IF statement
+   */
+  private analyzeIfStatement(statement: StatementNode): void {
+    if (statement.condition) {
+      // Extract variables from condition
+      const varMatches = statement.condition.match(/[A-Z][A-Z0-9-]*/gi);
+      if (varMatches) {
+        for (const varMatch of varMatches) {
+          const varName = this.extractVariableName(varMatch);
+          if (varName) {
+            this.recordVariableReference(varName, statement.location, 'read');
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Analyze INITIALIZE statement
+   */
+  private analyzeInitializeStatement(statement: StatementNode): void {
+    if (statement.target) {
+      const targetVar = this.extractVariableName(statement.target);
+      this.recordVariableReference(targetVar, statement.location, 'write');
+    }
+    
+    if (statement.sourceText) {
+      const initMatch = statement.sourceText.match(/INITIALIZE\s+([A-Z0-9-]+)/i);
+      if (initMatch) {
+        const targetVar = this.extractVariableName(initMatch[1]);
+        this.recordVariableReference(targetVar, statement.location, 'write');
+      }
+    }
+  }
+
+  /**
+   * Extract clean variable name from text
+   */
+  private extractVariableName(text: string): string | null {
+    if (!text || typeof text !== 'string') return null;
+    
+    // Remove quotes, parentheses, and clean up
+    const cleaned = text.trim()
+      .replace(/^['"]|['"]$/g, '') // Remove quotes
+      .replace(/\([^)]*\)/g, '') // Remove array indices
+      .trim();
+    
+    // Check if it's a valid variable name (letters, numbers, hyphens)
+    if (/^[A-Z][A-Z0-9-]*$/i.test(cleaned)) {
+      return cleaned.toUpperCase();
+    }
+    
+    return null;
+  }
+
+  /**
+   * Record a variable reference
+   */
+  private recordVariableReference(variableName: string | null, location: SourceLocation, type: 'read' | 'write'): void {
+    if (!variableName) return;
+    
+    const usage = this.variableUsage.get(variableName);
+    if (usage) {
+      usage.references.push(location);
+      
+      if (type === 'read') {
+        usage.isRead = true;
+        usage.readCount++;
+        if (!usage.firstUse) {
+          usage.firstUse = location;
+        }
+        usage.lastUse = location;
+      } else if (type === 'write') {
+        usage.isWritten = true;
+        usage.writeCount++;
+        if (!usage.firstUse) {
+          usage.firstUse = location;
+        }
+        usage.lastUse = location;
+      }
+    }
+  }
+
+  /**
+   * Detect dead code (unreachable sections/paragraphs)
+   */
+  private detectDeadCode(): void {
+    // Mark entry points as reachable
+    this.markEntryPointsReachable();
+    
+    // Propagate reachability through call graph
+    this.propagateReachability();
+    
+    // Report unreachable code
+    this.callGraph.forEach(node => {
+      if (!node.reachable) {
+        this.errorHandler.addAnalysisWarning(
+          `Unreachable ${node.type} '${node.name}' - no path from program entry point`,
+          'dead-code-detection',
+          'UNREACHABLE_CODE',
+          node.location,
+          [`Consider removing unused ${node.type} or add a reference to it`]
+        );
+      }
+    });
+  }
+
+  /**
+   * Mark entry points as reachable
+   */
+  private markEntryPointsReachable(): void {
+    // In COBOL, execution starts from the first executable statement
+    // Mark the first section/paragraph as reachable
+    if (this.currentProgram?.procedureDivision) {
+      const procDiv = this.currentProgram.procedureDivision;
+      
+      // First section or paragraph is the entry point
+      let entryPoint: string | undefined;
+      
+      if (procDiv.sections.length > 0) {
+        entryPoint = procDiv.sections[0].name;
+      } else if (procDiv.paragraphs.length > 0) {
+        entryPoint = procDiv.paragraphs[0].name;
+      }
+      
+      if (entryPoint) {
+        const entryNode = this.callGraph.get(entryPoint);
+        if (entryNode) {
+          entryNode.reachable = true;
+        }
+      }
+    }
+  }
+
+  /**
+   * Propagate reachability through call graph
+   */
+  private propagateReachability(): void {
+    let changed = true;
+    
+    while (changed) {
+      changed = false;
+      
+      this.callGraph.forEach(node => {
+        if (node.reachable) {
+          node.callees.forEach(calleeName => {
+            const calleeNode = this.callGraph.get(calleeName);
+            if (calleeNode && !calleeNode.reachable) {
+              calleeNode.reachable = true;
+              changed = true;
+            }
+          });
+        }
+      });
+    }
+  }
+
+  /**
+   * Detect unreachable paragraphs
+   */
+  private detectUnreachableParagraphs(): void {
+    // This is handled by detectDeadCode, but we can add specific paragraph analysis
+    const unreachableParagraphs = Array.from(this.callGraph.values())
+      .filter(node => node.type === 'paragraph' && !node.reachable);
+    
+    unreachableParagraphs.forEach(paragraph => {
+      this.errorHandler.addAnalysisWarning(
+        `Paragraph '${paragraph.name}' is never executed`,
+        'unreachable-paragraph',
+        'UNREACHABLE_PARAGRAPH',
+        paragraph.location,
+        ['Add a PERFORM statement to call this paragraph', 'Remove the paragraph if it\'s no longer needed']
+      );
+    });
+  }
+
+  /**
+   * Detect unused variables
+   */
+  private detectUnusedVariables(): void {
+    this.variableUsage.forEach(usage => {
+      if (usage.references.length === 0) {
+        this.errorHandler.addAnalysisWarning(
+          `Variable '${usage.name}' is declared but never used`,
+          'unused-variable',
+          'UNUSED_VARIABLE',
+          usage.definition.location,
+          ['Remove the unused variable declaration', 'Add code that uses this variable']
+        );
+      } else if (!usage.isRead && usage.isWritten) {
+        this.errorHandler.addAnalysisWarning(
+          `Variable '${usage.name}' is written to but never read`,
+          'unused-variable',
+          'WRITE_ONLY_VARIABLE',
+          usage.definition.location,
+          ['Add code that reads this variable', 'Remove the variable if it\'s not needed']
+        );
+      } else if (usage.isRead && !usage.isWritten && !usage.isInitialized) {
+        this.errorHandler.addAnalysisWarning(
+          `Variable '${usage.name}' is read but never initialized or written to`,
+          'uninitialized-variable',
+          'UNINITIALIZED_VARIABLE',
+          usage.definition.location,
+          ['Initialize the variable with a VALUE clause', 'Add code that sets the variable before use']
+        );
+      }
+    });
+  }
+
+  /**
+   * Detect circular dependencies
+   */
+  private detectCircularDependencies(): void {
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+    
+    this.callGraph.forEach((node, name) => {
+      if (!visited.has(name)) {
+        this.findCircularDependency(name, visited, recursionStack, []);
+      }
+    });
+  }
+
+  /**
+   * Find circular dependency using DFS
+   */
+  private findCircularDependency(
+    nodeName: string,
+    visited: Set<string>,
+    recursionStack: Set<string>,
+    path: string[]
+  ): void {
+    visited.add(nodeName);
+    recursionStack.add(nodeName);
+    path.push(nodeName);
+    
+    const node = this.callGraph.get(nodeName);
+    if (!node) return;
+    
+    for (const callee of node.callees) {
+      if (!visited.has(callee)) {
+        this.findCircularDependency(callee, visited, recursionStack, [...path]);
+      } else if (recursionStack.has(callee)) {
+        // Found circular dependency
+        const cycleStart = path.indexOf(callee);
+        const cycle = path.slice(cycleStart).concat(callee);
+        
+        this.errorHandler.addAnalysisWarning(
+          `Circular dependency detected: ${cycle.join(' -> ')}`,
+          'circular-dependency',
+          'CIRCULAR_DEPENDENCY',
+          node.location,
+          ['Restructure the code to eliminate the circular call pattern']
+        );
+      }
+    }
+    
+    recursionStack.delete(nodeName);
+  }
+
+  /**
+   * Detect infinite loops
+   */
+  private detectInfiniteLoops(): void {
+    // Look for self-referencing paragraphs/sections
+    this.callGraph.forEach(node => {
+      if (node.callees.includes(node.name)) {
+        this.errorHandler.addAnalysisWarning(
+          `Potential infinite loop: ${node.type} '${node.name}' calls itself`,
+          'infinite-loop',
+          'INFINITE_LOOP',
+          node.location,
+          ['Add a condition to break the loop', 'Restructure the logic to avoid self-reference']
+        );
+      }
+    });
+  }
+
+  /**
+   * Detect unreferenced sections
+   */
+  private detectUnreferencedSections(): void {
+    const unreferencedSections = Array.from(this.callGraph.values())
+      .filter(node => node.type === 'section' && node.callers.length === 0);
+    
+    unreferencedSections.forEach(section => {
+      // Skip the first section as it's the entry point
+      if (this.currentProgram?.procedureDivision?.sections[0]?.name !== section.name) {
+        this.errorHandler.addAnalysisWarning(
+          `Section '${section.name}' is never referenced`,
+          'unreferenced-section',
+          'UNREFERENCED_SECTION',
+          section.location,
+          ['Add a PERFORM statement to call this section', 'Remove the section if it\'s no longer needed']
+        );
+      }
+    });
+  }
+
+  /**
+   * Check for missing GO TO targets
+   */
+  private checkMissingGoToTargets(): void {
+    if (!this.currentProgram?.procedureDivision) return;
+    
+    const procDiv = this.currentProgram.procedureDivision;
+    const allGoToStatements: { statement: StatementNode, target: string, location: SourceLocation }[] = [];
+    
+    // Collect all GO TO statements
+    const collectGoToStatements = (statements: StatementNode[]) => {
+      for (const statement of statements) {
+        if (statement.statementType === 'GO') {
+          // Extract target from GO TO statement
+          let target: string | null = null;
+          
+          if (statement.target) {
+            target = statement.target;
+          } else if (statement.sourceText) {
+            const goToMatch = statement.sourceText.match(/GO\s+TO\s+([A-Z0-9-]+)/i);
+            if (goToMatch) {
+              target = goToMatch[1];
+            }
+          }
+          
+          if (target) {
+            allGoToStatements.push({
+              statement,
+              target: target.toUpperCase(),
+              location: statement.location
+            });
+          }
+        }
+        
+        // Recursively check nested statements
+        if (statement.nestedStatements) {
+          collectGoToStatements(statement.nestedStatements);
+        }
+      }
+    };
+    
+    // Collect from all sections and paragraphs
+    procDiv.sections.forEach(section => {
+      const statements = (section as any).statements || [];
+      collectGoToStatements(statements);
+      
+      section.paragraphs.forEach(paragraph => {
+        const paragraphStatements = (paragraph as any).statements || [];
+        collectGoToStatements(paragraphStatements);
+      });
+    });
+    
+    procDiv.paragraphs.forEach(paragraph => {
+      const statements = (paragraph as any).statements || [];
+      collectGoToStatements(statements);
+    });
+    
+    // Check each GO TO target
+    for (const goToInfo of allGoToStatements) {
+      const targetExists = this.callGraph.has(goToInfo.target);
+      
+      if (!targetExists) {
+        this.errorHandler.addAnalysisWarning(
+          `GO TO target '${goToInfo.target}' not found`,
+          'missing-goto-target',
+          'MISSING_GOTO_TARGET',
+          goToInfo.location,
+          [
+            `Create a paragraph named '${goToInfo.target}'`,
+            'Check the spelling of the target name',
+            'Remove the GO TO statement if it\'s no longer needed'
+          ]
+        );
+      }
+    }
+  }
+
+  /**
+   * Analyze variable usage patterns
+   */
+  private analyzeVariableUsagePatterns(): void {
+    this.variableUsage.forEach(usage => {
+      // Check for variables that are only used in their own definition
+      if (usage.references.length === 1 && 
+          usage.references[0].line === usage.definition.location.line) {
+        this.errorHandler.addAnalysisWarning(
+          `Variable '${usage.name}' is only referenced in its own definition`,
+          'variable-usage',
+          'SELF_REFERENTIAL_VARIABLE',
+          usage.definition.location
+        );
+      }
+    });
+  }
+
+
+  /**
+   * Get analysis errors
+   */
+  getErrors(): AnalysisError[] {
+    return this.errorHandler.getErrors().filter(e => e instanceof AnalysisError) as AnalysisError[];
+  }
+
+  /**
+   * Get analysis warnings
+   */
+  getWarnings(): AnalysisError[] {
+    return this.errorHandler.getWarnings().filter(w => w instanceof AnalysisError) as AnalysisError[];
+  }
+
+  /**
+   * Get error handler for integration
+   */
+  getErrorHandler(): CobolErrorHandler {
+    return this.errorHandler;
+  }
+
+  /**
+   * Clear all analysis results
+   */
+  clear(): void {
+    this.errorHandler.clear();
+    this.callGraph.clear();
+    this.variableUsage.clear();
+    this.codeQualityMetrics = undefined;
+    this.performanceBottlenecks = [];
+    this.securityVulnerabilities = [];
+    this.controlFlowGraph.clear();
+    this.dataFlowPaths.clear();
+  }
+
+  /**
+   * Check if analysis found errors
+   */
+  hasErrors(): boolean {
+    return this.errorHandler.hasErrors();
+  }
+
+  /**
+   * Calculate code quality metrics
+   */
+  private calculateCodeQualityMetrics(): void {
+    if (!this.currentProgram) return;
+
+    const cyclomaticComplexity = this.calculateCyclomaticComplexity();
+    const nestingDepth = this.calculateNestingDepth();
+    const linesOfCode = this.calculateLinesOfCode();
+    const halsteadMetrics = this.calculateHalsteadMetrics();
+    const maintainabilityIndex = this.calculateMaintainabilityIndex(cyclomaticComplexity, linesOfCode, halsteadMetrics);
+    const technicalDebt = this.calculateTechnicalDebt();
+    const codeSmells = this.identifyCodeSmells();
+
+    this.codeQualityMetrics = {
+      cyclomaticComplexity,
+      nestingDepth,
+      linesOfCode,
+      halsteadMetrics,
+      maintainabilityIndex,
+      technicalDebt,
+      codeSmells
+    };
+  }
+
+  /**
+   * Calculate cyclomatic complexity
+   */
+  private calculateCyclomaticComplexity(): number {
+    let complexity = 1; // Base complexity
+    
+    if (!this.currentProgram?.procedureDivision) return complexity;
+
+    const countDecisionPoints = (statements: StatementNode[]): number => {
+      let count = 0;
+      for (const statement of statements) {
+        // Count decision points
+        switch (statement.statementType) {
+          case 'IF':
+          case 'EVALUATE':
+          case 'SEARCH':
+          case 'PERFORM':
+            count++;
+            break;
+        }
+        
+        // Recursively count nested statements
+        if (statement.nestedStatements) {
+          count += countDecisionPoints(statement.nestedStatements);
+        }
+      }
+      return count;
+    };
+
+    const procDiv = this.currentProgram.procedureDivision;
+    
+    // Count decision points in sections
+    procDiv.sections.forEach(section => {
+      const statements = (section as any).statements || [];
+      complexity += countDecisionPoints(statements);
+      
+      section.paragraphs.forEach(paragraph => {
+        const paragraphStatements = (paragraph as any).statements || [];
+        complexity += countDecisionPoints(paragraphStatements);
+      });
+    });
+
+    // Count decision points in standalone paragraphs
+    procDiv.paragraphs.forEach(paragraph => {
+      const statements = (paragraph as any).statements || [];
+      complexity += countDecisionPoints(statements);
+    });
+
+    return complexity;
+  }
+
+  /**
+   * Calculate maximum nesting depth
+   */
+  private calculateNestingDepth(): number {
+    let maxDepth = 0;
+    
+    if (!this.currentProgram?.procedureDivision) return maxDepth;
+
+    const calculateDepth = (statements: StatementNode[], currentDepth: number = 0): number => {
+      let depth = currentDepth;
+      
+      for (const statement of statements) {
+        if (statement.nestedStatements && statement.nestedStatements.length > 0) {
+          const nestedDepth = calculateDepth(statement.nestedStatements, currentDepth + 1);
+          depth = Math.max(depth, nestedDepth);
+        }
+      }
+      
+      return depth;
+    };
+
+    const procDiv = this.currentProgram.procedureDivision;
+    
+    // Calculate depth in sections
+    procDiv.sections.forEach(section => {
+      const statements = (section as any).statements || [];
+      maxDepth = Math.max(maxDepth, calculateDepth(statements));
+      
+      section.paragraphs.forEach(paragraph => {
+        const paragraphStatements = (paragraph as any).statements || [];
+        maxDepth = Math.max(maxDepth, calculateDepth(paragraphStatements));
+      });
+    });
+
+    // Calculate depth in standalone paragraphs
+    procDiv.paragraphs.forEach(paragraph => {
+      const statements = (paragraph as any).statements || [];
+      maxDepth = Math.max(maxDepth, calculateDepth(statements));
+    });
+
+    return maxDepth;
+  }
+
+  /**
+   * Calculate lines of code
+   */
+  private calculateLinesOfCode(): number {
+    let linesOfCode = 0;
+    
+    if (!this.currentProgram?.procedureDivision) return linesOfCode;
+
+    const countLines = (statements: StatementNode[]): number => {
+      let count = 0;
+      for (const statement of statements) {
+        count++;
+        if (statement.nestedStatements) {
+          count += countLines(statement.nestedStatements);
+        }
+      }
+      return count;
+    };
+
+    const procDiv = this.currentProgram.procedureDivision;
+    
+    // Count lines in sections
+    procDiv.sections.forEach(section => {
+      const statements = (section as any).statements || [];
+      linesOfCode += countLines(statements);
+      
+      section.paragraphs.forEach(paragraph => {
+        const paragraphStatements = (paragraph as any).statements || [];
+        linesOfCode += countLines(paragraphStatements);
+      });
+    });
+
+    // Count lines in standalone paragraphs
+    procDiv.paragraphs.forEach(paragraph => {
+      const statements = (paragraph as any).statements || [];
+      linesOfCode += countLines(statements);
+    });
+
+    return linesOfCode;
+  }
+
+  /**
+   * Calculate Halstead metrics
+   */
+  private calculateHalsteadMetrics(): HalsteadMetrics {
+    const operators = new Set<string>();
+    const operands = new Set<string>();
+    let totalOperators = 0;
+    let totalOperands = 0;
+
+    if (!this.currentProgram?.procedureDivision) {
+      return {
+        vocabulary: 0,
+        length: 0,
+        calculatedLength: 0,
+        volume: 0,
+        difficulty: 0,
+        effort: 0,
+        timeRequiredToProgram: 0,
+        numberOfDeliveredBugs: 0
+      };
+    }
+
+    const analyzeStatements = (statements: StatementNode[]): void => {
+      for (const statement of statements) {
+        // Count operators (COBOL verbs)
+        operators.add(statement.statementType);
+        totalOperators++;
+        
+        // Count operands (variables, literals)
+        if (statement.operands) {
+          statement.operands.forEach(operand => {
+            operands.add(operand);
+            totalOperands++;
+          });
+        }
+        
+        if (statement.nestedStatements) {
+          analyzeStatements(statement.nestedStatements);
+        }
+      }
+    };
+
+    const procDiv = this.currentProgram.procedureDivision;
+    
+    // Analyze sections
+    procDiv.sections.forEach(section => {
+      const statements = (section as any).statements || [];
+      analyzeStatements(statements);
+      
+      section.paragraphs.forEach(paragraph => {
+        const paragraphStatements = (paragraph as any).statements || [];
+        analyzeStatements(paragraphStatements);
+      });
+    });
+
+    // Analyze standalone paragraphs
+    procDiv.paragraphs.forEach(paragraph => {
+      const statements = (paragraph as any).statements || [];
+      analyzeStatements(statements);
+    });
+
+    const n1 = operators.size; // Number of distinct operators
+    const n2 = operands.size; // Number of distinct operands
+    const N1 = totalOperators; // Total number of operators
+    const N2 = totalOperands; // Total number of operands
+
+    const vocabulary = n1 + n2;
+    const length = N1 + N2;
+    const calculatedLength = n1 * Math.log2(n1) + n2 * Math.log2(n2);
+    const volume = length * Math.log2(vocabulary);
+    const difficulty = (n1 / 2) * (N2 / n2);
+    const effort = difficulty * volume;
+    const timeRequiredToProgram = effort / 18; // Seconds
+    const numberOfDeliveredBugs = volume / 3000;
+
+    return {
+      vocabulary,
+      length,
+      calculatedLength,
+      volume,
+      difficulty,
+      effort,
+      timeRequiredToProgram,
+      numberOfDeliveredBugs
+    };
+  }
+
+  /**
+   * Calculate maintainability index
+   */
+  private calculateMaintainabilityIndex(
+    cyclomaticComplexity: number,
+    linesOfCode: number,
+    halsteadMetrics: HalsteadMetrics
+  ): number {
+    // Maintainability Index = 171 - 5.2 * ln(Halstead Volume) - 0.23 * (Cyclomatic Complexity) - 16.2 * ln(Lines of Code)
+    const mi = 171 - 5.2 * Math.log(halsteadMetrics.volume) - 0.23 * cyclomaticComplexity - 16.2 * Math.log(linesOfCode);
+    return Math.max(0, Math.min(100, mi)); // Clamp between 0 and 100
+  }
+
+  /**
+   * Calculate technical debt
+   */
+  private calculateTechnicalDebt(): number {
+    let debt = 0;
+    
+    // Add debt for each type of issue
+    debt += this.errorHandler.getWarnings().length * 30; // 30 minutes per warning
+    debt += this.performanceBottlenecks.length * 60; // 60 minutes per performance issue
+    debt += this.securityVulnerabilities.length * 120; // 120 minutes per security issue
+    
+    return debt;
+  }
+
+  /**
+   * Identify code smells
+   */
+  private identifyCodeSmells(): string[] {
+    const smells: string[] = [];
+    
+    // Long method smell
+    if (this.codeQualityMetrics && this.codeQualityMetrics.linesOfCode > 100) {
+      smells.push('Long methods detected');
+    }
+    
+    // High complexity smell
+    if (this.codeQualityMetrics && this.codeQualityMetrics.cyclomaticComplexity > 10) {
+      smells.push('High cyclomatic complexity');
+    }
+    
+    // Deep nesting smell
+    if (this.codeQualityMetrics && this.codeQualityMetrics.nestingDepth > 4) {
+      smells.push('Deep nesting detected');
+    }
+    
+    // Large class smell (many variables)
+    if (this.variableUsage.size > 50) {
+      smells.push('Too many variables');
+    }
+    
+    return smells;
+  }
+
+  /**
+   * Analyze performance bottlenecks
+   */
+  private analyzePerformanceBottlenecks(): void {
+    if (!this.currentProgram?.procedureDivision) return;
+
+    const analyzeStatements = (statements: StatementNode[], context: string): void => {
+      for (let i = 0; i < statements.length; i++) {
+        const statement = statements[i];
+        
+        // Check for nested loops
+        if (statement.statementType === 'PERFORM' && statement.nestedStatements) {
+          const hasNestedPerform = statement.nestedStatements.some(nested => nested.statementType === 'PERFORM');
+          if (hasNestedPerform) {
+            this.performanceBottlenecks.push({
+              type: 'nested-loop',
+              location: statement.location,
+              description: 'Nested PERFORM statements detected',
+              impact: 'high',
+              suggestion: 'Consider consolidating loops or using more efficient algorithms'
+            });
+          }
+        }
+        
+        // Check for large PERFORM ranges
+        if (statement.statementType === 'PERFORM' && statement.sourceText) {
+          const throughMatch = statement.sourceText.match(/PERFORM\s+\w+\s+THROUGH\s+\w+/i);
+          if (throughMatch) {
+            this.performanceBottlenecks.push({
+              type: 'large-perform',
+              location: statement.location,
+              description: 'Large PERFORM THROUGH range detected',
+              impact: 'medium',
+              suggestion: 'Consider breaking down large perform ranges into smaller, more focused sections'
+            });
+          }
+        }
+        
+        // Check for excessive I/O operations
+        if (statement.statementType === 'READ' || statement.statementType === 'WRITE') {
+          const nextStatement = statements[i + 1];
+          if (nextStatement && (nextStatement.statementType === 'READ' || nextStatement.statementType === 'WRITE')) {
+            this.performanceBottlenecks.push({
+              type: 'excessive-io',
+              location: statement.location,
+              description: 'Consecutive I/O operations detected',
+              impact: 'medium',
+              suggestion: 'Consider buffering or batching I/O operations'
+            });
+          }
+        }
+        
+        // Check for string concatenation in loops
+        if (statement.statementType === 'STRING' && this.isInLoop(statement, statements)) {
+          this.performanceBottlenecks.push({
+            type: 'string-concatenation',
+            location: statement.location,
+            description: 'String concatenation inside loop detected',
+            impact: 'medium',
+            suggestion: 'Consider using more efficient string handling techniques'
+          });
+        }
+        
+        if (statement.nestedStatements) {
+          analyzeStatements(statement.nestedStatements, context);
+        }
+      }
+    };
+
+    const procDiv = this.currentProgram.procedureDivision;
+    
+    // Analyze sections
+    procDiv.sections.forEach(section => {
+      const statements = (section as any).statements || [];
+      analyzeStatements(statements, section.name);
+      
+      section.paragraphs.forEach(paragraph => {
+        const paragraphStatements = (paragraph as any).statements || [];
+        analyzeStatements(paragraphStatements, paragraph.name);
+      });
+    });
+
+    // Analyze standalone paragraphs
+    procDiv.paragraphs.forEach(paragraph => {
+      const statements = (paragraph as any).statements || [];
+      analyzeStatements(statements, paragraph.name);
+    });
+  }
+
+  /**
+   * Check if a statement is inside a loop
+   */
+  private isInLoop(statement: StatementNode, statements: StatementNode[]): boolean {
+    // Simple heuristic: check if there's a PERFORM statement in the same context
+    return statements.some(s => s.statementType === 'PERFORM' && s.nestedStatements?.includes(statement));
+  }
+
+  /**
+   * Detect security vulnerabilities
+   */
+  private detectSecurityVulnerabilities(): void {
+    if (!this.currentProgram?.procedureDivision) return;
+
+    const analyzeStatements = (statements: StatementNode[]): void => {
+      for (const statement of statements) {
+        // Check for buffer overflow risks
+        if (statement.statementType === 'MOVE' && statement.sourceText) {
+          const moveMatch = statement.sourceText.match(/MOVE\s+(.+)\s+TO\s+(.+)/i);
+          if (moveMatch) {
+            const source = moveMatch[1];
+            const target = moveMatch[2];
+            if (source.includes('ACCEPT') || source.includes('INPUT')) {
+              this.securityVulnerabilities.push({
+                type: 'buffer-overflow',
+                location: statement.location,
+                description: 'Unchecked input data moved to variable',
+                severity: 'medium',
+                remediation: 'Validate input length and format before processing'
+              });
+            }
+          }
+        }
+        
+        // Check for SQL injection risks  
+        if (statement.sourceText && statement.sourceText.includes('EXEC')) {
+          if (statement.sourceText.includes('SQL') && statement.sourceText.includes('||')) {
+            this.securityVulnerabilities.push({
+              type: 'sql-injection',
+              location: statement.location,
+              description: 'Dynamic SQL construction detected',
+              severity: 'high',
+              remediation: 'Use parameterized queries instead of string concatenation'
+            });
+          }
+        }
+        
+        // Check for file operations
+        if (statement.statementType === 'OPEN' && statement.sourceText) {
+          if (statement.sourceText.includes('INPUT') || statement.sourceText.includes('OUTPUT')) {
+            this.securityVulnerabilities.push({
+              type: 'unsafe-file-operation',
+              location: statement.location,
+              description: 'File operation without path validation',
+              severity: 'medium',
+              remediation: 'Validate file paths and permissions before file operations'
+            });
+          }
+        }
+        
+        // Check for hardcoded credentials
+        if (statement.sourceText) {
+          const hardcodedPatterns = [
+            /password\s*=\s*['"][^'"]+['"]/i,
+            /pwd\s*=\s*['"][^'"]+['"]/i,
+            /userid\s*=\s*['"][^'"]+['"]/i,
+            /username\s*=\s*['"][^'"]+['"]/i
+          ];
+          
+          for (const pattern of hardcodedPatterns) {
+            if (pattern.test(statement.sourceText)) {
+              this.securityVulnerabilities.push({
+                type: 'hardcoded-credential',
+                location: statement.location,
+                description: 'Hardcoded credential detected',
+                severity: 'high',
+                remediation: 'Use secure credential management instead of hardcoded values'
+              });
+              break;
+            }
+          }
+        }
+        
+        if (statement.nestedStatements) {
+          analyzeStatements(statement.nestedStatements);
+        }
+      }
+    };
+
+    const procDiv = this.currentProgram.procedureDivision;
+    
+    // Analyze sections
+    procDiv.sections.forEach(section => {
+      const statements = (section as any).statements || [];
+      analyzeStatements(statements);
+      
+      section.paragraphs.forEach(paragraph => {
+        const paragraphStatements = (paragraph as any).statements || [];
+        analyzeStatements(paragraphStatements);
+      });
+    });
+
+    // Analyze standalone paragraphs
+    procDiv.paragraphs.forEach(paragraph => {
+      const statements = (paragraph as any).statements || [];
+      analyzeStatements(statements);
+    });
+  }
+
+  /**
+   * Perform control flow analysis
+   */
+  private performControlFlowAnalysis(): void {
+    if (!this.currentProgram?.procedureDivision) return;
+
+    const procDiv = this.currentProgram.procedureDivision;
+    let nodeId = 0;
+
+    // Build control flow graph
+    const buildCFG = (statements: StatementNode[], predecessors: string[] = []): string[] => {
+      const successors: string[] = [];
+      
+      for (const statement of statements) {
+        const currentNodeId = `node_${nodeId++}`;
+        
+        // Determine node type
+        let nodeType: ControlFlowNode['type'] = 'statement';
+        if (statement.statementType === 'IF') {
+          nodeType = 'branch';
+        } else if (statement.statementType === 'PERFORM') {
+          nodeType = 'loop-header';
+        }
+        
+        // Create control flow node
+        const cfgNode: ControlFlowNode = {
+          id: currentNodeId,
+          type: nodeType,
+          location: statement.location,
+          predecessors: [...predecessors],
+          successors: [],
+          dominators: [],
+          postDominators: []
+        };
+        
+        this.controlFlowGraph.set(currentNodeId, cfgNode);
+        
+        // Handle nested statements
+        if (statement.nestedStatements && statement.nestedStatements.length > 0) {
+          const nestedSuccessors = buildCFG(statement.nestedStatements, [currentNodeId]);
+          cfgNode.successors.push(...nestedSuccessors);
+        }
+        
+        successors.push(currentNodeId);
+      }
+      
+      return successors;
+    };
+
+    // Build CFG for sections
+    procDiv.sections.forEach(section => {
+      const statements = (section as any).statements || [];
+      buildCFG(statements);
+      
+      section.paragraphs.forEach(paragraph => {
+        const paragraphStatements = (paragraph as any).statements || [];
+        buildCFG(paragraphStatements);
+      });
+    });
+
+    // Build CFG for standalone paragraphs
+    procDiv.paragraphs.forEach(paragraph => {
+      const statements = (paragraph as any).statements || [];
+      buildCFG(statements);
+    });
+
+    // Calculate dominators (simplified)
+    this.calculateDominators();
+  }
+
+  /**
+   * Calculate dominators for control flow analysis
+   */
+  private calculateDominators(): void {
+    // Simplified dominator calculation
+    this.controlFlowGraph.forEach(node => {
+      node.dominators = [node.id]; // Each node dominates itself
+      
+      // Add predecessors as potential dominators
+      node.predecessors.forEach(pred => {
+        const predNode = this.controlFlowGraph.get(pred);
+        if (predNode) {
+          node.dominators.push(...predNode.dominators);
+        }
+      });
+    });
+  }
+
+  /**
+   * Perform data flow analysis
+   */
+  private performDataFlowAnalysis(): void {
+    if (!this.currentProgram?.procedureDivision) return;
+
+    // Build data flow paths for each variable
+    this.variableUsage.forEach((usage, variableName) => {
+      const paths: DataFlowPath[] = [];
+      
+      // Create def-use chains
+      const definitions = usage.references.filter((_, index) => {
+        // This is a simplified check - in practice, we'd need more sophisticated analysis
+        return index % 2 === 0; // Assume even indices are definitions
+      });
+      
+      const uses = usage.references.filter((_, index) => {
+        return index % 2 === 1; // Assume odd indices are uses
+      });
+      
+      definitions.forEach(def => {
+        const path: DataFlowPath = {
+          variable: variableName,
+          definition: def,
+          uses: uses.filter(use => use.line > def.line), // Uses after definition
+          reachable: true,
+          hasUse: uses.some(use => use.line > def.line),
+          isLive: true
+        };
+        paths.push(path);
+      });
+      
+      this.dataFlowPaths.set(variableName, paths);
+      usage.dataFlowPaths = paths;
+    });
+  }
+
+  /**
+   * Analyze maintainability
+   */
+  private analyzeMaintainability(): void {
+    if (!this.codeQualityMetrics) return;
+
+    const metrics = this.codeQualityMetrics;
+    
+    // Check maintainability thresholds
+    if (metrics.maintainabilityIndex < 20) {
+      this.errorHandler.addAnalysisWarning(
+        'Low maintainability index detected',
+        'maintainability',
+        'LOW_MAINTAINABILITY',
+        { line: 1, column: 1, endLine: 1, endColumn: 1 },
+        ['Refactor complex code', 'Reduce cyclomatic complexity', 'Improve code documentation']
+      );
+    }
+    
+    if (metrics.technicalDebt > 480) { // 8 hours
+      this.errorHandler.addAnalysisWarning(
+        'High technical debt detected',
+        'maintainability',
+        'HIGH_TECHNICAL_DEBT',
+        { line: 1, column: 1, endLine: 1, endColumn: 1 },
+        ['Address code quality issues', 'Resolve performance bottlenecks', 'Fix security vulnerabilities']
+      );
+    }
+  }
+
+  /**
+   * Detect code smells
+   */
+  private detectCodeSmells(): void {
+    if (!this.codeQualityMetrics) return;
+
+    this.codeQualityMetrics.codeSmells.forEach(smell => {
+      this.errorHandler.addAnalysisWarning(
+        `Code smell detected: ${smell}`,
+        'code-smell',
+        'CODE_SMELL',
+        { line: 1, column: 1, endLine: 1, endColumn: 1 },
+        ['Refactor code to improve quality', 'Follow COBOL best practices']
+      );
+    });
+  }
+
+  /**
+   * Analyze complexity metrics
+   */
+  private analyzeComplexityMetrics(): void {
+    if (!this.codeQualityMetrics) return;
+
+    const metrics = this.codeQualityMetrics;
+    
+    // Check complexity thresholds
+    if (metrics.cyclomaticComplexity > 10) {
+      this.errorHandler.addAnalysisWarning(
+        `High cyclomatic complexity: ${metrics.cyclomaticComplexity}`,
+        'complexity',
+        'HIGH_COMPLEXITY',
+        { line: 1, column: 1, endLine: 1, endColumn: 1 },
+        ['Break down complex logic into smaller functions', 'Reduce conditional statements']
+      );
+    }
+    
+    if (metrics.nestingDepth > 4) {
+      this.errorHandler.addAnalysisWarning(
+        `Deep nesting detected: ${metrics.nestingDepth} levels`,
+        'complexity',
+        'DEEP_NESTING',
+        { line: 1, column: 1, endLine: 1, endColumn: 1 },
+        ['Flatten nested structures', 'Extract nested logic into separate paragraphs']
+      );
+    }
+  }
+
+  /**
+   * Get code quality metrics
+   */
+  getCodeQualityMetrics(): CodeQualityMetrics | undefined {
+    return this.codeQualityMetrics;
+  }
+
+  /**
+   * Get performance bottlenecks
+   */
+  getPerformanceBottlenecks(): PerformanceBottleneck[] {
+    return [...this.performanceBottlenecks];
+  }
+
+  /**
+   * Get security vulnerabilities
+   */
+  getSecurityVulnerabilities(): SecurityVulnerability[] {
+    return [...this.securityVulnerabilities];
+  }
+
+  // Missing method implementations
+
+  /**
+   * Check for nested performs
+   */
+  private checkNestedPerforms(procedureDivision: ProcedureDivision): void {
+    // Simple implementation - placeholder
+  }
+
+  /**
+   * Check for hardcoded credentials
+   */
+  private checkForHardcodedCredentials(): void {
+    // Simple implementation - placeholder
+  }
+
+  /**
+   * Check for unsafe file operations
+   */
+  private checkForUnsafeFileOperations(): void {
+    // Simple implementation - placeholder
+  }
+
+  /**
+   * Build control flow graph
+   */
+  private buildControlFlowGraph(): void {
+    // Simple implementation - placeholder
+  }
+
+  /**
+   * Analyze control flow patterns
+   */
+  private analyzeControlFlowPatterns(): void {
+    // Simple implementation - placeholder
+  }
+
+  /**
+   * Detect data flow anomalies
+   */
+  private detectDataFlowAnomalies(): void {
+    // Simple implementation - placeholder
+  }
+
+  /**
+   * Calculate code maintainability
+   */
+  private calculateCodeMaintainability(): number {
+    // Simple implementation
+    return 50; // placeholder value
+  }
+
+  /**
+   * Check for long methods
+   */
+  private checkForLongMethods(): void {
+    // Simple implementation - placeholder
+  }
+
+  /**
+   * Check for large classes
+   */
+  private checkForLargeClasses(): void {
+    // Simple implementation - placeholder
+  }
+
+  /**
+   * Check for duplicate code
+   */
+  private checkForDuplicateCode(): void {
+    // Simple implementation - placeholder
+  }
+
+  /**
+   * Get control flow graph
+   */
+  getControlFlowGraph(): Map<string, ControlFlowNode> {
+    return new Map(this.controlFlowGraph);
+  }
+
+  /**
+   * Get data flow paths
+   */
+  getDataFlowPaths(): Map<string, DataFlowPath[]> {
+    return new Map(this.dataFlowPaths);
+  }
+
+  /**
+   * Get analysis summary
+   */
+  getSummary(): {
+    errorCount: number;
+    warningCount: number;
+    hasErrors: boolean;
+    hasWarnings: boolean;
+    callGraphNodes: number;
+    variablesAnalyzed: number;
+    codeQualityMetrics?: CodeQualityMetrics;
+    performanceBottlenecks: number;
+    securityVulnerabilities: number;
+    controlFlowNodes: number;
+    dataFlowPaths: number;
+  } {
+    const baseSummary = this.errorHandler.getSummary();
+    return {
+      ...baseSummary,
+      callGraphNodes: this.callGraph.size,
+      variablesAnalyzed: this.variableUsage.size,
+      codeQualityMetrics: this.codeQualityMetrics,
+      performanceBottlenecks: this.performanceBottlenecks.length,
+      securityVulnerabilities: this.securityVulnerabilities.length,
+      controlFlowNodes: this.controlFlowGraph.size,
+      dataFlowPaths: this.dataFlowPaths.size
+    };
+  }
+
+  /**
+   * Get call graph for external use
+   */
+  getCallGraph(): Map<string, CallGraphNode> {
+    return new Map(this.callGraph);
+  }
+
+  /**
+   * Get variable usage information
+   */
+  getVariableUsage(): Map<string, VariableUsage> {
+    return new Map(this.variableUsage);
+  }
+
+  /**
+   * Get current configuration
+   */
+  getConfiguration(): StaticAnalysisConfig {
+    return { ...this.config };
+  }
+}

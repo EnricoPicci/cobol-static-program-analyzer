@@ -93,6 +93,13 @@ export class DataDivision extends BaseASTNode {
     return this.workingStorage || [];
   }
 
+  /**
+   * Set working storage variables (for testing)
+   */
+  set workingStorageVariables(variables: VariableDefinition[]) {
+    this.workingStorage = variables;
+  }
+
   get fileVariables(): VariableDefinition[] {
     return this.fileSection || [];
   }

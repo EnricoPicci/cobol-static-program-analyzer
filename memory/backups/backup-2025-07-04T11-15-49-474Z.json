@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-07-04T06:38:58.820Z",
+  "timestamp": "2025-07-04T11:15:49.474Z",
   "version": "1.0",
   "entries": [
     {
@@ -1756,23 +1756,43 @@
       "checksum": "e16f8a467ed5529607de096d543d21539d867939e209514e0c01617d8b92f567",
       "references": [],
       "dependencies": []
+    },
+    {
+      "id": "entry_mcopxphw_2mmzavzbn",
+      "key": "swarm-auto-centralized-1751627016510/analyst/requirements",
+      "value": "\"# Phase 4 Requirements Analysis - Static Analyzer Tests\\n\\n## Test File: tests/unit/analysis/static-analyzer.test.ts\\n\\n## Critical API Mismatches Identified:\\n\\n### 1. CobolProgram Constructor Signature Issue\\n**Problem**: Tests are calling CobolProgram constructor with 2 arguments but constructor requires 3.\\n**Current Test Code**: `new CobolProgram('TEST-PROGRAM', mockLocation)`\\n**Expected Constructor**: `new CobolProgram(name, identificationDivision, location)`\\n**Required Fix**: Create IdentificationDivision instance before CobolProgram creation\\n\\n**Affected Lines**: 30, 355, 366, 376, 497, 502\\n\\n### 2. StaticAnalyzer Missing getConfiguration Method\\n**Problem**: Tests expect `analyzer.getConfiguration` method but it doesn't exist.\\n**Current Test Code**: `expect(defaultAnalyzer.getConfiguration).toBeDefined();`\\n**Required Fix**: Add getConfiguration() method to StaticAnalyzer class that returns current configuration\\n\\n**Affected Lines**: 38\\n\\n### 3. DataDivision workingStorageVariables Read-Only Property\\n**Problem**: Tests trying to assign to read-only getter property.\\n**Current Test Code**: `mockProgram.dataDivision\\\\!.workingStorageVariables = [var1, var2]`\\n**Available Property**: `workingStorageVariables` is a getter that returns `this.workingStorage || []`\\n**Required Fix**: Use proper API to add variables - either:\\n   - Use `addWorkingStorageVariable(variable)` method for each variable\\n   - Or create a setter for workingStorageVariables property\\n   - Or modify workingStorage property directly\\n\\n**Affected Lines**: 161, 188, 214, 234, 260, 398, 428, 474\\n\\n## Detailed Implementation Requirements:\\n\\n### 1. Fix CobolProgram Constructor Calls\\n```typescript\\n// Before (failing):\\nmockProgram = new CobolProgram('TEST-PROGRAM', mockLocation);\\n\\n// After (working):\\nconst mockIdentificationDivision = new IdentificationDivision('TEST-PROGRAM', mockLocation);\\nmockProgram = new CobolProgram('TEST-PROGRAM', mockIdentificationDivision, mockLocation);\\n```\\n\\n### 2. Add getConfiguration Method to StaticAnalyzer\\n```typescript\\n// Required method signature:\\ngetConfiguration(): StaticAnalysisConfig {\\n  return this.config;\\n}\\n```\\n\\n### 3. Fix DataDivision Variable Assignment\\n**Option A**: Add setter for workingStorageVariables\\n```typescript\\n// In DataDivision class:\\nset workingStorageVariables(variables: VariableDefinition[]) {\\n  this.workingStorage = variables;\\n}\\n```\\n\\n**Option B**: Use existing addWorkingStorageVariable method\\n```typescript\\n// In tests:\\nvariables.forEach(variable => {\\n  mockProgram.dataDivision\\\\!.addWorkingStorageVariable(variable);\\n});\\n```\\n\\n**Option C**: Direct assignment to workingStorage property\\n```typescript\\n// In tests:\\nmockProgram.dataDivision\\\\!.workingStorage = [var1, var2];\\n```\\n\\n## Files that need modification:\\n1. `/workspaces/cobol-static-program-analyzer/src/analysis/static-analyzer.ts` - Add getConfiguration method\\n2. `/workspaces/cobol-static-program-analyzer/src/ast/nodes/DataDivision.ts` - Add workingStorageVariables setter (if choosing Option A)\\n3. `/workspaces/cobol-static-program-analyzer/tests/unit/analysis/static-analyzer.test.ts` - Fix all constructor calls and variable assignments\\n\\n## Priority Order:\\n1. HIGH: Fix CobolProgram constructor calls (prevents compilation)\\n2. HIGH: Add getConfiguration method (prevents compilation)\\n3. HIGH: Fix DataDivision workingStorageVariables assignment (prevents compilation)\\n\\n## Test Requirements:\\n- All tests must pass without compilation errors\\n- No functional changes to existing logic\\n- Maintain backward compatibility\\n- Follow existing patterns and conventions\"",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-07-04T11:15:49.460Z",
+      "updatedAt": "2025-07-04T11:15:49.460Z",
+      "lastAccessedAt": "2025-07-04T11:15:49.460Z",
+      "version": 1,
+      "size": 3782,
+      "compressed": true,
+      "checksum": "32025a2fe32a11d5531b39d7bfb9813aab9dcbf8f422cc308f58340d04990a24",
+      "references": [],
+      "dependencies": []
     }
   ],
   "statistics": {
     "overview": {
-      "totalEntries": 77,
-      "totalSize": 215848,
-      "compressedEntries": 49,
-      "compressionRatio": -12.696534350105535,
-      "indexSize": 3850,
-      "memoryUsage": 11280880,
+      "totalEntries": 78,
+      "totalSize": 219630,
+      "compressedEntries": 50,
+      "compressionRatio": -12.9540409886294,
+      "indexSize": 3900,
+      "memoryUsage": 11273504,
       "diskUsage": 0
     },
     "distribution": {
       "byNamespace": {
         "default": {
-          "count": 77,
-          "size": 215848
+          "count": 78,
+          "size": 219630
         }
       },
       "byType": {
@@ -1781,29 +1801,29 @@
           "size": 96685
         },
         "string": {
-          "count": 43,
-          "size": 119163
+          "count": 44,
+          "size": 122945
         }
       },
       "byOwner": {
         "system": {
-          "count": 77,
-          "size": 215848
+          "count": 78,
+          "size": 219630
         }
       },
       "byAccessLevel": {
         "shared": {
-          "count": 77,
-          "size": 215848
+          "count": 78,
+          "size": 219630
         }
       }
     },
     "temporal": {
-      "entriesCreatedLast24h": 3,
-      "entriesUpdatedLast24h": 3,
-      "entriesAccessedLast24h": 21,
+      "entriesCreatedLast24h": 4,
+      "entriesUpdatedLast24h": 4,
+      "entriesAccessedLast24h": 22,
       "oldestEntry": "2025-07-01T13:50:44.321Z",
-      "newestEntry": "2025-07-04T06:38:58.815Z"
+      "newestEntry": "2025-07-04T11:15:49.460Z"
     },
     "performance": {
       "averageQueryTime": 0,
