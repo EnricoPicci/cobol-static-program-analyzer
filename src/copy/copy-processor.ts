@@ -31,6 +31,7 @@ export class CopyProcessor implements ICopyProcessor {
   private currentNestingLevel: number = 0;
   private resolvedCopybooks: ResolvedCopybook[] = [];
   private currentParent: string = 'main';
+  private processCache: Map<string, PreprocessedSource> = new Map();
 
   constructor(config?: Partial<CopybookConfiguration>) {
     this.config = { ...DEFAULT_COPYBOOK_CONFIG, ...config };
@@ -45,6 +46,12 @@ export class CopyProcessor implements ICopyProcessor {
       this.updateConfiguration(config);
     }
 
+    // Check cache first for performance optimization
+    const cacheKey = this.generateCacheKey(source, config);
+    if (this.config.cacheEnabled && this.processCache.has(cacheKey)) {
+      return this.processCache.get(cacheKey)!;
+    }
+
     this.errorHandler.clear();
     this.dependencyTracker.clear();
     this.currentNestingLevel = 0;
@@ -56,23 +63,33 @@ export class CopyProcessor implements ICopyProcessor {
       const sourceMap = this.buildSourceMap(source, processedContent);
       const includedCopybooks = this.getIncludedCopybooks();
 
-      return {
+      const result = {
         originalSource: source,
         processedSource: processedContent,
         includedCopybooks,
         sourceMap,
         errors: this.errorHandler.getErrors()
       };
+
+      // Cache the result for future use
+      if (this.config.cacheEnabled) {
+        this.processCache.set(cacheKey, result);
+      }
+
+      return result;
     } catch (error) {
       this.errorHandler.handleUnexpectedError(error as Error, { line: 1, column: 1 });
       
-      return {
+      const errorResult = {
         originalSource: source,
         processedSource: source, // Return original source on failure
         includedCopybooks: [],
         sourceMap: [],
         errors: this.errorHandler.getErrors()
       };
+
+      // Don't cache error results
+      return errorResult;
     }
   }
 
@@ -148,12 +165,14 @@ export class CopyProcessor implements ICopyProcessor {
           continue;
         }
         
-        // Look for COPY statements
-        const copyMatch = line.match(/COPY\s+(.+?)\.$/i);
-        if (copyMatch) {
-          const copyInfo = this.parseCopyStatement(copyMatch[1], i + 1);
-          if (copyInfo) {
-            copyStatements.push(copyInfo);
+        // Look for COPY statements (optimized for performance)
+        if (line.toUpperCase().includes('COPY ')) {
+          const copyMatch = line.match(/COPY\s+(.+?)\.$/i);
+          if (copyMatch) {
+            const copyInfo = this.parseCopyStatement(copyMatch[1], i + 1);
+            if (copyInfo) {
+              copyStatements.push(copyInfo);
+            }
           }
         }
       }
@@ -351,6 +370,28 @@ export class CopyProcessor implements ICopyProcessor {
   private getIncludedCopybooks(): ResolvedCopybook[] {
     // Return the copybooks that were successfully resolved during processing
     return this.resolvedCopybooks;
+  }
+
+  /**
+   * Generate a cache key for the given source and configuration
+   */
+  private generateCacheKey(source: string, config?: Partial<CopybookConfiguration>): string {
+    const configStr = config ? JSON.stringify(config) : '';
+    const sourceHash = this.simpleHash(source);
+    return `${sourceHash}-${this.simpleHash(configStr)}`;
+  }
+
+  /**
+   * Simple hash function for cache keys
+   */
+  private simpleHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36);
   }
 
   getConfiguration(): CopybookConfiguration {

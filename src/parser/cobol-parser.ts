@@ -101,6 +101,8 @@ export class CobolParser {
   private astBuilder: CobolASTBuilder;
   private errors: DiagnosticMessage[] = [];
   private warnings: DiagnosticMessage[] = [];
+  private parseCache: Map<string, ParseResult> = new Map();
+  private static readonly CACHE_MAX_SIZE = 50;
 
   constructor(config: CobolParserConfig = DEFAULT_COBOL_PARSER_CONFIG) {
     this.config = config;
@@ -113,6 +115,22 @@ export class CobolParser {
   async parse(source: string, fileName?: string): Promise<ParseResult> {
     const startTime = performance.now();
     this.clearDiagnostics();
+
+    // Check cache first for performance optimization
+    const cacheKey = this.generateCacheKey(source, fileName);
+    if (this.parseCache.has(cacheKey)) {
+      const cachedResult = this.parseCache.get(cacheKey)!;
+      // Return a copy to avoid mutation issues
+      return {
+        ...cachedResult,
+        performance: cachedResult.performance ? {
+          parseTime: performance.now() - startTime, // Update parse time for cache hit
+          memoryUsage: cachedResult.performance.memoryUsage || 0,
+          nodeCount: cachedResult.performance.nodeCount || 0,
+          copybookCount: cachedResult.performance.copybookCount || 0
+        } : undefined
+      };
+    }
 
     try {
       // Stage 1: Preprocessing (COPY/REPLACE statements)
@@ -165,7 +183,7 @@ export class CobolParser {
         copybookCount: copybooksIncluded.length
       };
 
-      return {
+      const result = {
         ast,
         errors: [...this.errors],
         warnings: [...this.warnings],
@@ -179,6 +197,13 @@ export class CobolParser {
           copybooksIncluded
         }
       };
+
+      // Cache successful parse results
+      if (result.success) {
+        this.addToCache(cacheKey, result);
+      }
+
+      return result;
 
     } catch (error) {
       this.addError('PARSING_FAILED', error instanceof Error ? error.message : String(error), {
@@ -780,5 +805,50 @@ export class CobolParser {
         }
       }
     }
+  }
+
+  /**
+   * Generate cache key for parse result
+   */
+  private generateCacheKey(source: string, fileName?: string): string {
+    const sourceHash = this.simpleHash(source);
+    const fileNameHash = fileName ? this.simpleHash(fileName) : '';
+    const configHash = this.simpleHash(JSON.stringify(this.config));
+    return `${sourceHash}-${fileNameHash}-${configHash}`;
+  }
+
+  /**
+   * Add result to cache with LRU eviction
+   */
+  private addToCache(key: string, result: ParseResult): void {
+    // Remove oldest entry if cache is full
+    if (this.parseCache.size >= CobolParser.CACHE_MAX_SIZE) {
+      const firstKey = this.parseCache.keys().next().value;
+      if (firstKey) {
+        this.parseCache.delete(firstKey);
+      }
+    }
+    
+    this.parseCache.set(key, result);
+  }
+
+  /**
+   * Simple hash function for cache keys
+   */
+  private simpleHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  /**
+   * Clear the parse cache
+   */
+  clearCache(): void {
+    this.parseCache.clear();
   }
 }

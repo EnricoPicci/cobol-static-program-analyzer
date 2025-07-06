@@ -16,6 +16,9 @@ export class FileSystemCopybookFinder implements CopybookFinder {
   private extensions: string[];
   private encoding: string;
   private caseSensitive: boolean;
+  private fileCache: Map<string, CopybookResult> = new Map();
+  private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  private cacheTimestamps: Map<string, number> = new Map();
 
   constructor(config: CopybookConfiguration) {
     this.searchPaths = config.searchPaths;
@@ -25,19 +28,34 @@ export class FileSystemCopybookFinder implements CopybookFinder {
   }
 
   async findCopybook(name: string, library?: string): Promise<CopybookResult> {
+    const cacheKey = `${name}${library ? `#${library}` : ''}`;
+    
+    // Check cache first
+    const cachedResult = this.getCachedResult(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
+    
     const searchLocations = this.buildSearchLocations(name, library);
     
     for (const location of searchLocations) {
       const result = await this.tryLocation(location, name);
       if (result.found) {
+        // Cache successful results
+        this.setCachedResult(cacheKey, result);
         return result;
       }
     }
     
-    return {
+    const notFoundResult = {
       found: false,
       error: `Copybook '${name}' not found in search paths: ${this.searchPaths.join(', ')}`
     };
+    
+    // Cache not found results too (for a shorter time)
+    this.setCachedResult(cacheKey, notFoundResult, 60000); // 1 minute for not found
+    
+    return notFoundResult;
   }
 
   supports(location: string): boolean {
@@ -125,6 +143,43 @@ export class FileSystemCopybookFinder implements CopybookFinder {
     if (!this.searchPaths.includes(searchPath)) {
       this.searchPaths.push(searchPath);
     }
+  }
+
+  /**
+   * Get cached result if still valid
+   */
+  private getCachedResult(cacheKey: string): CopybookResult | null {
+    const cached = this.fileCache.get(cacheKey);
+    const timestamp = this.cacheTimestamps.get(cacheKey);
+    
+    if (cached && timestamp) {
+      const age = Date.now() - timestamp;
+      if (age < FileSystemCopybookFinder.CACHE_TTL_MS) {
+        return cached;
+      }
+      
+      // Cache expired, remove it
+      this.fileCache.delete(cacheKey);
+      this.cacheTimestamps.delete(cacheKey);
+    }
+    
+    return null;
+  }
+
+  /**
+   * Cache a result with optional custom TTL
+   */
+  private setCachedResult(cacheKey: string, result: CopybookResult, ttl?: number): void {
+    this.fileCache.set(cacheKey, result);
+    this.cacheTimestamps.set(cacheKey, Date.now());
+  }
+
+  /**
+   * Clear the file cache
+   */
+  clearCache(): void {
+    this.fileCache.clear();
+    this.cacheTimestamps.clear();
   }
 
   removeSearchPath(searchPath: string): void {

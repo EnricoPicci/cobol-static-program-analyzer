@@ -4,3 +4,8 @@ Run all tests but performance tests
   Or alternatively, for more precision:
 
   npm run test -- --testPathIgnorePatterns=".*[Pp]erformance.*\.test\.ts"
+
+
+
+
+  npx claude-flow swarm "you are implementing a Cobol AST parser. you have an implementation plan divided in phases. you have completed the implentation of phase 5. Now implement phase 6. declare the phase completed only when all tests, excluding performance tests, pass"
